@@ -1,4 +1,5 @@
-# lc29hda_rtk.py - Refactored version V1.4 spec update
+# lc29hda_rtk_refactored.py - Refactored version V1.4 spec update
+# Uses curses for flicker-free status display.
 # Sends GGA continuously, even without GPS fix.
 # Adheres to SOLID, DRY, Clean Code principles.
 
@@ -13,6 +14,7 @@ import logging
 from collections import Counter, deque
 import argparse
 import sys
+import curses # Import curses library
 from typing import Optional, Dict, Any, List, Tuple
 
 # --- Constants ---
@@ -26,7 +28,7 @@ DEFAULT_NTRIP_PASSWORD = "password"
 DEFAULT_LAT = 40.10939918 # Fallback Latitude
 DEFAULT_LON = -7.15450152 # Fallback Longitude
 DEFAULT_ALT = 476.68    # Fallback Altitude
-DEFAULT_HDOP = 99.99    # Default/Invalid HDOP value according to Spec V1.4 [cite: 103]
+DEFAULT_HDOP = 99.99    # Default/Invalid HDOP value according to Spec V1.4
 
 NTRIP_TIMEOUT = 10.0  # seconds
 NTRIP_GGA_INTERVAL = 10.0 # seconds
@@ -54,7 +56,7 @@ RTCM_MSG_TYPE_BDS_MSM7 = 1127
 RTCM_MSG_TYPE_QZSS_MSM7 = 1117 # If using QZSS corrections
 RTCM_MSG_TYPE_ARP_1005 = 1005 # Antenna Reference Point
 
-# Check V1.4 Spec Table 8 for relevant input messages [cite: 693]
+# Check V1.4 Spec Table 8 for relevant input messages
 IMPORTANT_RTCM_TYPES = {
     RTCM_MSG_TYPE_GPS_MSM7: "GPS MSM7 (1077)",
     RTCM_MSG_TYPE_GLONASS_MSM7: "GLONASS MSM7 (1087)",
@@ -64,12 +66,15 @@ IMPORTANT_RTCM_TYPES = {
     RTCM_MSG_TYPE_ARP_1005: "ARP (1005/1006)", # Base station position
 }
 # Add MSM4/MSM5 types if needed and provided by caster:
-# 1074, 1075 (GPS), 1084, 1085 (GLO), 1094, 1095 (GAL), 1124, 1125 (BDS) [cite: 696, 697, 698, 699]
+# 1074, 1075 (GPS), 1084, 1085 (GLO), 1094, 1095 (GAL), 1124, 1125 (BDS)
 
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
 # --- Logging Setup ---
-logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+# Note: Logging to console might interfere with curses display.
+# Best practice is often to log exclusively to file when using curses.
+# We'll keep basic file logging.
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, filename='lc29hda_rtk_refactored.log', filemode='w')
 logger = logging.getLogger("RtkController") # Main logger
 
 # --- Configuration Class ---
@@ -88,10 +93,10 @@ class Config:
         self.default_alt: float = args.default_alt or DEFAULT_ALT
         self.debug: bool = args.debug
 
-        if self.debug:
-            logging.getLogger().setLevel(logging.DEBUG)
-            for handler in logging.getLogger().handlers:
-                handler.setLevel(logging.DEBUG)
+        # Adjust log level based on debug flag (only affects file log now)
+        log_level = logging.DEBUG if self.debug else logging.INFO
+        logging.getLogger().setLevel(log_level)
+
         logger.info("Configuration loaded.")
         logger.debug(f"Config details: {self.__dict__}")
 
@@ -109,7 +114,7 @@ class GnssState:
         self.status: str = "Initializing"
         self.rtk_status: str = "Unknown"
         self.fix_type: int = FIX_QUALITY_INVALID
-        self.hdop: float = DEFAULT_HDOP # Updated default [cite: 103]
+        self.hdop: float = DEFAULT_HDOP # Updated default
         self.num_satellites_used: int = 0
         self.num_satellites_in_view: int = 0
         self.last_fix_time: Optional[datetime] = None
@@ -219,7 +224,8 @@ class GnssDevice:
         self._serial_port: Optional[serial.Serial] = None
         self._state = state
         self._logger = logging.getLogger(self.__class__.__name__)
-        self.connect()
+        # Don't connect automatically here, let controller handle it
+        # self.connect()
 
     def connect(self) -> bool:
         """Establishes the serial connection."""
@@ -283,6 +289,7 @@ class GnssDevice:
             # Read response (optional, adjust timeout as needed)
             response_bytes = self._serial_port.readline()
             end_time = time.monotonic()
+            # Use thread-safe update for state modification
             self._state.update(last_command_response_time_sec=(end_time - start_time))
 
             response = response_bytes.decode('ascii', errors='ignore').strip()
@@ -294,9 +301,8 @@ class GnssDevice:
         except serial.SerialException as e:
             self._logger.error(f"Serial error sending command '{command}': {e}")
             self._state.increment_error_count("gps")
-            # Attempt to reconnect or handle error
+            # Close port on error, let reconnection happen in main loop
             self.close()
-            # self.connect() # Avoid immediate reconnect here, let main loop handle it
             return None
         except Exception as e:
             self._logger.error(f"Unexpected error sending command '{command}': {e}", exc_info=True)
@@ -306,17 +312,18 @@ class GnssDevice:
     def read_line(self) -> Optional[str]:
         """Reads a line from the serial port."""
         if not self.is_connected():
-            # self._logger.warning("Cannot read line: Serial port not connected.")
-            # Don't log repeatedly if connection is down
             return None # Let the caller handle reconnection attempts
 
         try:
             if self._serial_port.in_waiting > 0:
                 line_bytes = self._serial_port.readline()
+                # Check for empty byte string which can happen on timeout/disconnect
+                if not line_bytes:
+                    return "" # Distinguish from error/closed port
                 return line_bytes.decode('ascii', errors='ignore').strip()
             else:
-                # No data waiting, return None immediately (makes loop responsive)
-                return "" # Return empty string to distinguish from error/closed port
+                # No data waiting, return empty string (non-blocking behavior)
+                return ""
         except serial.SerialException as e:
             self._logger.error(f"Serial error reading line: {e}")
             self._state.increment_error_count("gps")
@@ -355,12 +362,10 @@ class GnssDevice:
         self._logger.info("Configuring LC29H (DA) module...")
         time.sleep(1) # Allow module to boot
 
-        # Query Firmware Version first using PQTM command [cite: 197]
+        # Query Firmware Version first using PQTM command
         version_response = self.send_command("PQTMVERNO")
         if version_response:
-            # Example response: $PQTMVERNO,LC29HDANR01A04S,2021/12/28,16:11:48*41
             try:
-                # Simple parsing, assuming format consistency
                 parts = version_response.split(',')
                 if len(parts) > 1 and parts[0] == "$PQTMVERNO":
                     fw = parts[1]
@@ -372,7 +377,6 @@ class GnssDevice:
                 else:
                     self._logger.warning(f"Unexpected firmware response format: {version_response}")
                     self._state.update(firmware_version="Parse Error")
-
             except Exception as e:
                  self._logger.warning(f"Could not parse firmware version from '{version_response}': {e}")
                  self._state.update(firmware_version="Parse Exception")
@@ -380,35 +384,22 @@ class GnssDevice:
              self._logger.warning("No response received for firmware query.")
              self._state.update(firmware_version="No Response")
 
-        # Set baud rate using PAIR command [cite: 676]
-        # PortType 0=UART, PortIndex 0=UART1 [cite: 677]
-        # self.send_command(f"PAIR864,0,0,{self._baudrate}")
-        # time.sleep(0.5) # Allow time to process, though spec says reboot required [cite: 678]
+        # Enable specific NMEA sentences at 1Hz using PAIR062
+        # Spec V1.4 confirms types 0-5 supported for DA
+        # Short delay between commands might be needed
+        commands = [
+            "PAIR062,0,1", # GGA
+            "PAIR062,4,1", # RMC
+            "PAIR062,2,1", # GSA
+            "PAIR062,3,1", # GSV
+            "PAIR062,5,1", # VTG
+            "PAIR436,1", # Enable RTCM Ephemeris Output
+            "PAIR513",   # Save Settings
+        ]
+        for cmd in commands:
+             self.send_command(cmd)
+             time.sleep(0.15) # Small delay
 
-        # Enable specific NMEA sentences at 1Hz using PAIR062 [cite: 508]
-        # <OutputRate>=1 means output once per fix (default fix rate is 1Hz)
-        # Supported for DA: 0(GGA), 1(GLL), 2(GSA), 3(GSV), 4(RMC), 5(VTG) [cite: 513]
-        self.send_command("PAIR062,0,1"); time.sleep(0.15)  # GGA
-        self.send_command("PAIR062,4,1"); time.sleep(0.15)  # RMC
-        self.send_command("PAIR062,2,1"); time.sleep(0.15)  # GSA
-        self.send_command("PAIR062,3,1"); time.sleep(0.15)  # GSV
-        self.send_command("PAIR062,5,1"); time.sleep(0.15)  # VTG
-        # self.send_command("PAIR062,1,1"); time.sleep(0.15) # GLL (Optional)
-        # Disable unsupported messages explicitly? Not strictly necessary if default is off
-        # self.send_command("PAIR062,6,0"); time.sleep(0.15) # ZDA (Not supported anyway [cite: 158])
-        # self.send_command("PAIR062,7,0"); time.sleep(0.15) # GRS (Not supported anyway [cite: 166])
-        # self.send_command("PAIR062,8,0"); time.sleep(0.15) # GST (Not supported anyway [cite: 180])
-        # self.send_command("PAIR062,9,0"); time.sleep(0.15) # GNS (Not supported anyway [cite: 193])
-
-
-        # Enable RTCM Ephemeris Output (if needed by NTRIP/RTK setup)
-        # PAIR436 is available on LC29H series [cite: 648]
-        self.send_command("PAIR436,1") # Enable Ephemeris output
-        time.sleep(0.2)
-
-        # Save settings to NVM using PAIR513 [cite: 658]
-        self.send_command("PAIR513")
-        time.sleep(0.5) # Allow time for save operation
 
         self._logger.info("Module configuration commands sent.")
 
@@ -428,6 +419,10 @@ class NmeaParser:
     def __init__(self, state: GnssState):
         self._state = state
         self._logger = logging.getLogger(self.__class__.__name__)
+         # Temporary storage for GSV sequence building
+        self._current_gsv_sequence_sats = {}
+        self._current_gsv_systems = Counter()
+
 
     def parse(self, sentence: str) -> None:
         """Parses a single NMEA sentence."""
@@ -462,11 +457,11 @@ class NmeaParser:
         status_map = {
             FIX_QUALITY_RTK_FIXED: "RTK Fixed",
             FIX_QUALITY_RTK_FLOAT: "RTK Float",
-            FIX_QUALITY_DGPS: "DGPS", # Includes SBAS/DGPS [cite: 103]
-            FIX_QUALITY_GPS: "GPS (SPS)", # Basic GPS fix [cite: 103]
-            FIX_QUALITY_ESTIMATED: "Estimated (DR)", # Dead Reckoning [cite: 103]
-            FIX_QUALITY_INVALID: "No Fix / Invalid" # Fix not available [cite: 103]
-            # FIX_QUALITY_PPS is not listed as output in GGA spec [cite: 103]
+            FIX_QUALITY_DGPS: "DGPS", # Includes SBAS/DGPS
+            FIX_QUALITY_GPS: "GPS (SPS)", # Basic GPS fix
+            FIX_QUALITY_ESTIMATED: "Estimated (DR)", # Dead Reckoning
+            FIX_QUALITY_INVALID: "No Fix / Invalid" # Fix not available
+            # FIX_QUALITY_PPS is not listed as output in GGA spec
         }
         return status_map.get(fix_type, "Unknown Fix Type")
 
@@ -476,7 +471,7 @@ class NmeaParser:
         current_state = self._state.get_state_snapshot() # Get a consistent snapshot
         old_fix_type = current_state['fix_type']
         # Ensure gps_qual is treated as integer, default to invalid if empty/None
-        new_fix_type = int(msg.gps_qual) if msg.gps_qual is not None else FIX_QUALITY_INVALID
+        new_fix_type = int(msg.gps_qual) if msg.gps_qual is not None and msg.gps_qual != '' else FIX_QUALITY_INVALID
         now = datetime.now(timezone.utc)
         updates = {'fix_type': new_fix_type}
 
@@ -503,9 +498,9 @@ class NmeaParser:
              updates['position'] = {"lat": new_lat, "lon": new_lon, "alt": new_alt_val}
 
 
-        updates['num_satellites_used'] = int(msg.num_sats) if msg.num_sats is not None else 0
-        # Use DEFAULT_HDOP (99.99) if value is missing or invalid [cite: 103]
-        updates['hdop'] = float(msg.horizontal_dil) if msg.horizontal_dil is not None else DEFAULT_HDOP
+        updates['num_satellites_used'] = int(msg.num_sats) if msg.num_sats is not None and msg.num_sats != '' else 0
+        # Use DEFAULT_HDOP (99.99) if value is missing or invalid
+        updates['hdop'] = float(msg.horizontal_dil) if msg.horizontal_dil is not None and msg.horizontal_dil != '' else DEFAULT_HDOP
 
         # Calculate Time to First Fix (TTFF)
         if not current_state.get('first_fix_time_sec') and new_fix_type > FIX_QUALITY_INVALID:
@@ -524,8 +519,6 @@ class NmeaParser:
              self._logger.warning(f"Lost RTK Fixed solution. New status: {new_rtk_status}")
 
         # Increment epochs since last RTK fix if we previously had one
-        # Note: epochs_since_fix is only meaningful if we *had* an RTK fix previously.
-        # This counter continues even if fix degrades, indicating time since *last* RTK fix.
         if current_state.get('last_rtk_fix_time'):
             updates['epochs_since_fix'] = current_state.get('epochs_since_fix', 0) + 1
 
@@ -545,16 +538,22 @@ class NmeaParser:
         """Parses GSV message content."""
         current_state = self._state.get_state_snapshot()
         # Ensure num_sv_in_view is treated as integer, default 0
-        num_sv_in_view = int(msg.num_sv_in_view) if msg.num_sv_in_view is not None else 0
+        num_sv_in_view = int(msg.num_sv_in_view) if msg.num_sv_in_view is not None and msg.num_sv_in_view != '' else 0
+        sentence_num = int(msg.sentence_num) if msg.sentence_num is not None and msg.sentence_num != '' else 0
+        num_sentences = int(msg.num_sentences) if msg.num_sentences is not None and msg.num_sentences != '' else 0
+
+        if sentence_num < 1 or num_sentences < 1:
+             self._logger.debug(f"Ignoring malformed GSV sentence: {msg}")
+             return
 
         # GSV messages come in sequences. Reset satellite info at the start of a new sequence.
-        is_first_sentence = (int(msg.sentence_num) == 1)
+        is_first_sentence = (sentence_num == 1)
         if is_first_sentence:
             # Keep a temporary dict for this sequence to avoid partial updates on error
             self._current_gsv_sequence_sats = {}
             self._current_gsv_systems = Counter()
 
-        # Determine constellation from talker ID (GP, GL, GA, GB, GQ, GI) [cite: 82]
+        # Determine constellation from talker ID (GP, GL, GA, GB, GQ, GI)
         sat_system = "Unknown"
         talker = msg.talker
         if talker == 'GP': sat_system = "GPS"
@@ -562,7 +561,7 @@ class NmeaParser:
         elif talker == 'GA': sat_system = "Galileo"
         elif talker == 'GB': sat_system = "BeiDou"
         elif talker == 'GQ': sat_system = "QZSS"
-        elif talker == 'GI': sat_system = "NavIC" # Added in V1.4 [cite: 82]
+        elif talker == 'GI': sat_system = "NavIC" # Added in V1.4
 
 
         # Process satellites in this specific GSV message
@@ -576,14 +575,16 @@ class NmeaParser:
             if hasattr(msg, prn_field) and getattr(msg, prn_field):
                 prn = getattr(msg, prn_field)
                 snr_val = getattr(msg, snr_field)
-                # Ensure SNR is integer, default 0 if None/empty
-                snr = int(snr_val) if snr_val else 0
-                # Ensure elevation/azimuth are integers, None if missing
-                elev = int(getattr(msg, elev_field)) if getattr(msg, elev_field) else None
-                azim = int(getattr(msg, azim_field)) if getattr(msg, azim_field) else None
+                # Ensure SNR is integer, default 0 if None/empty/invalid
+                try: snr = int(snr_val) if snr_val else 0
+                except (ValueError, TypeError): snr = 0
+                # Ensure elevation/azimuth are integers, None if missing/invalid
+                try: elev = int(getattr(msg, elev_field)) if getattr(msg, elev_field) else None
+                except (ValueError, TypeError): elev = None
+                try: azim = int(getattr(msg, azim_field)) if getattr(msg, azim_field) else None
+                except (ValueError, TypeError): azim = None
 
                 # Use a unique key: TalkerID-PRN (e.g., "GP-15", "GL-70")
-                # This handles potential PRN overlaps between constellations.
                 sat_key = f"{talker}-{prn}"
                 self._current_gsv_sequence_sats[sat_key] = {
                     'prn': prn,
@@ -599,7 +600,7 @@ class NmeaParser:
 
 
         # Update state only after processing the last sentence in the sequence
-        is_last_sentence = (int(msg.sentence_num) == int(msg.num_sentences))
+        is_last_sentence = (sentence_num == num_sentences)
         if is_last_sentence:
             # Calculate SNR stats based on the completed sequence data
             snr_stats = self._calculate_snr_stats(self._current_gsv_sequence_sats)
@@ -613,7 +614,7 @@ class NmeaParser:
                  'snr_stats': snr_stats
             }
             self._state.update(**updates)
-            # Clear temporary sequence data
+            # Clear temporary sequence data (important!)
             self._current_gsv_sequence_sats = {}
             self._current_gsv_systems = Counter()
 
@@ -634,9 +635,9 @@ class NmeaParser:
         return stats
 
     def _parse_gsa(self, msg: pynmea2.types.talker.GSA) -> None:
-        """Parses GSA message to mark active satellites and update DOP."""
+        """Parses GSA message to mark active satellites."""
         active_sat_keys = set()
-        talker = msg.talker # GP, GL, GA, GB, GN, GI etc. [cite: 82]
+        talker = msg.talker # GP, GL, GA, GB, GN, GI etc.
 
         # Extract active satellite PRNs from the message
         for i in range(1, 13):
@@ -650,13 +651,17 @@ class NmeaParser:
                      if talker == 'GN':
                           # Search for this PRN across all known satellites in the state
                           found = False
-                          current_sats = self._state.get_state_snapshot()['satellites_info']
-                          for key, sat_info in current_sats.items():
-                              # Match PRN number directly (could be ambiguous if PRNs overlap and are used simultaneously)
-                              if sat_info.get('prn') == prn:
-                                   active_sat_keys.add(key)
-                                   found = True
-                                   # Don't break, could potentially be listed under multiple talkers if PRNs overlap? Unlikely.
+                          # Need to lock state briefly to read satellite_info safely
+                          with self._state._lock:
+                              current_sats = self._state.satellites_info
+                              for key, sat_info in current_sats.items():
+                                  # Match PRN number directly
+                                  if sat_info.get('prn') == prn:
+                                      active_sat_keys.add(key)
+                                      found = True
+                                      # Assume unique PRN across constellations for simplicity here.
+                                      # Real-world overlaps might need more complex handling.
+                                      break
                           if not found:
                                self._logger.debug(f"GNGSA referenced PRN {prn} which was not found in recent GSV data.")
                      else:
@@ -666,20 +671,18 @@ class NmeaParser:
         # Update the 'active' status in the shared state's satellite info
         # Lock needed because we are modifying the dictionary within GnssState
         with self._state._lock:
-            # Create a temporary copy to iterate over while modifying the original
-            current_sat_info = self._state.satellites_info.copy()
-            for key, sat_info in current_sat_info.items():
-                 if key in active_sat_keys:
-                     # Mark as active if found in this GSA message
-                     self._state.satellites_info[key]['active'] = True
-                 else:
-                     # If not in this GSA msg, mark as inactive *only if* it belongs to the same talker
-                     # This prevents a GPGSA message from deactivating GLONASS sats etc.
-                     # It also handles the case where a satellite is active in GN GSA but not specific GSA.
-                     if talker != 'GN' and key.startswith(talker + '-'):
-                          self._state.satellites_info[key]['active'] = False
-                     # If talker is GN, we don't deactivate satellites based on this message alone,
-                     # as it only lists a subset. Let specific talker GSAs handle deactivation.
+            # Iterate over keys present in the state's satellite info
+            for key in list(self._state.satellites_info.keys()):
+                 # Check if the key exists before trying to access/modify it
+                 if key in self._state.satellites_info:
+                    if key in active_sat_keys:
+                        # Mark as active if found in this GSA message
+                        self._state.satellites_info[key]['active'] = True
+                    else:
+                        # Deactivate only if the GSA talker matches the satellite's talker
+                        if talker != 'GN' and key.startswith(talker + '-'):
+                            self._state.satellites_info[key]['active'] = False
+                        # Do not deactivate based on GN message alone
 
 
 # --- NTRIP Client ---
@@ -712,16 +715,11 @@ class NtripClient:
         # Close socket immediately to interrupt blocking calls
         if self._socket:
             try:
-                # Shutdown may fail if socket is already closed or in weird state
                 self._socket.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass # Ignore errors on shutdown
-            try:
-                 self._socket.close()
-            except OSError as e:
-                 self._logger.warning(f"Error closing NTRIP socket: {e}")
-            finally:
-                 self._socket = None
+            except OSError: pass
+            try: self._socket.close()
+            except OSError as e: self._logger.warning(f"Error closing NTRIP socket: {e}")
+            finally: self._socket = None
 
         # Wait for thread to finish
         if self._thread and self._thread.is_alive():
@@ -751,10 +749,6 @@ class NtripClient:
             auth_string = f"{self._config.ntrip_username}:{self._config.ntrip_password}"
             auth_b64 = base64.b64encode(auth_string.encode('ascii')).decode('ascii')
 
-            # Include NMEA-GGA header if caster requires it for location
-            # gga_header_line = f"Ntrip-GGA: {self._create_gga_sentence().strip()}" # Create GGA first
-            gga_header_line = "" # Some casters don't want/need it in initial GET
-
             request_lines = [
                 f"GET /{self._config.ntrip_mountpoint} HTTP/1.1", # Use HTTP/1.1 for Host header
                 f"Host: {self._config.ntrip_server}:{self._config.ntrip_port}",
@@ -763,11 +757,8 @@ class NtripClient:
                 f"Authorization: Basic {auth_b64}",
                 "Accept: */*",
                 "Connection: close", # Close connection after response
+                "\r\n" # Extra CRLF to end headers
             ]
-            # if gga_header_line:
-            #     request_lines.append(gga_header_line)
-            request_lines.append("\r\n") # Extra CRLF to end headers
-
             request = "\r\n".join(request_lines)
             # -----------------------------------------------
 
@@ -777,11 +768,15 @@ class NtripClient:
             # --- Check Response ---
             response_bytes = bytearray()
             # Read headers first (end with \r\n\r\n)
+            self._socket.settimeout(NTRIP_TIMEOUT) # Reset timeout for reading response
             while b"\r\n\r\n" not in response_bytes:
                  chunk = self._socket.recv(1024)
                  if not chunk:
                      raise ConnectionAbortedError("NTRIP server closed connection during header read")
                  response_bytes.extend(chunk)
+                 if len(response_bytes) > 8192: # Prevent excessive buffering
+                      raise OverflowError("NTRIP header too large")
+
 
             headers_part, _, body_part = response_bytes.partition(b"\r\n\r\n")
             response_str = headers_part.decode('ascii', errors='ignore')
@@ -820,7 +815,7 @@ class NtripClient:
             if self._socket: self._socket.close()
             self._socket = None
             return False
-        except (socket.gaierror, ConnectionRefusedError, ConnectionAbortedError, OSError) as e:
+        except (socket.gaierror, ConnectionRefusedError, ConnectionAbortedError, OverflowError, OSError) as e:
              self._logger.error(f"NTRIP socket connection error: {e}")
              self._state.set_ntrip_connected(False, f"Socket Error: {str(e)[:20]}")
              self._state.increment_ntrip_error_count("ntrip")
@@ -846,16 +841,16 @@ class NtripClient:
         time_str = now.strftime("%H%M%S.%f")[:9] # hhmmss.ss
 
         lat, lon, alt = self._config.default_lat, self._config.default_lon, self._config.default_alt
-        fix_quality = FIX_QUALITY_GPS # Default to basic GPS fix if no lock [cite: 103]
+        fix_quality = FIX_QUALITY_GPS # Default to basic GPS fix if no lock
         num_sats = 12 # Default number of sats if no lock
-        hdop = DEFAULT_HDOP # Default HDOP if no lock [cite: 103]
+        hdop = DEFAULT_HDOP # Default HDOP if no lock
 
         if state.get('have_position_lock'):
              pos = state.get('position', {})
              lat = pos.get('lat', self._config.default_lat)
              lon = pos.get('lon', self._config.default_lon)
              alt = pos.get('alt', self._config.default_alt)
-             # Use actual fix quality if available and valid, else default to GPS [cite: 103]
+             # Use actual fix quality if available and valid, else default to GPS
              current_fix = state.get('fix_type', FIX_QUALITY_INVALID)
              fix_quality = current_fix if current_fix > FIX_QUALITY_INVALID else FIX_QUALITY_GPS
              num_sats = state.get('num_satellites_used', 0)
@@ -863,7 +858,6 @@ class NtripClient:
         # else: Use defaults defined above if no lock
 
         # Convert to NMEA DDMM.MMMMMM format (adjust precision as needed)
-        # NMEA V4.1 requires variable length, up to mmmmmm [cite: 100, 103]
         lat_deg = int(abs(lat))
         lat_min = (abs(lat) - lat_deg) * 60
         lat_nmea = f"{lat_deg:02d}{lat_min:09.6f}" # DDMM.MMMMMM format
@@ -875,12 +869,10 @@ class NtripClient:
         lon_dir = "E" if lon >= 0 else "W"
 
         # Altitude (meters) and Geoid Separation (meters)
-        # Ensure minimum precision (e.g., .1 for alt, .1 for sep) [cite: 103, 106]
         alt_str = f"{alt:.1f}"
-        sep_str = "-0.0" # Geoid separation - use fixed value if unknown, M is unit [cite: 106]
+        sep_str = "-0.0" # Geoid separation - use fixed value if unknown, M is unit
 
-        # Format: $GPGGA,time,lat,N/S,lon,E/W,quality,num_sats,hdop,alt,M,sep,M,diff_age,diff_station*CS
-        # Use GNGGA for multi-constellation talker ID
+        # Format: $GNGGA,time,lat,N/S,lon,E/W,quality,num_sats,hdop,alt,M,sep,M,diff_age,diff_station*CS
         gga_data = f"GNGGA,{time_str},{lat_nmea},{lat_dir},{lon_nmea},{lon_dir},{fix_quality},{num_sats:02d},{hdop:.2f},{alt_str},M,{sep_str},M,,"
         checksum = GnssDevice._calculate_checksum(gga_data)
         return f"${gga_data}*{checksum}\r\n"
@@ -889,8 +881,6 @@ class NtripClient:
     def _send_gga(self) -> None:
         """Sends the generated GGA sentence to the NTRIP caster."""
         if not self._socket or not self._state.ntrip_connected:
-            # Don't log warning every time if disconnected, handled by _run loop
-            # self._logger.warning("Cannot send GGA: NTRIP socket not connected.")
             return
 
         gga_sentence = self._create_gga_sentence()
@@ -899,13 +889,11 @@ class NtripClient:
             return
 
         try:
-            sent_bytes = self._socket.sendall(gga_sentence.encode('ascii'))
-            # sendall returns None on success, raises exception on error
+            self._socket.sendall(gga_sentence.encode('ascii'))
             self._logger.debug("Sent GGA to NTRIP server.")
         except (OSError, socket.timeout, BrokenPipeError) as e:
             self._logger.error(f"Error sending GGA to NTRIP: {e}. Disconnecting.")
             self._state.increment_ntrip_error_count("ntrip")
-            # Connection likely broken, trigger reconnect by closing socket
             if self._socket: self._socket.close()
             self._socket = None
             self._state.set_ntrip_connected(False, "GGA Send Error")
@@ -923,209 +911,143 @@ class NtripClient:
         i = 0
         data_len = len(data)
         while i < data_len - 5: # Need at least 6 bytes for preamble, length, type start
-            # Find RTCM3 preamble (0xD3)
-            if data[i] == 0xD3 and (data[i+1] & 0xC0) == 0: # Check reserved bits (bits 6,7 of byte 1) are 0
+            if data[i] == 0xD3 and (data[i+1] & 0xC0) == 0:
                 try:
-                    # --- RTCM3 Header Parsing ---
-                    # Message Length (10 bits in bytes i+1, i+2)
                     payload_length = ((data[i+1] & 0x03) << 8) | data[i+2]
                     total_length = 3 + payload_length + 3 # Header(3) + Payload + CRC(3)
-
-                    # Check if full message is likely present in the buffer
                     if i + total_length <= data_len:
-                         # Message Type (12 bits in bytes i+3, i+4)
-                         # Shift byte 3 left by 4 bits, OR with high 4 bits of byte 4
                          message_type = (data[i+3] << 4) | (data[i+4] >> 4)
                          types_found.append(message_type)
-
-                         # TODO: Add CRC check here for robustness if needed
-                         # crc_calculated = calculate_rtcm_crc(data[i : i + 3 + payload_length])
-                         # crc_received = int.from_bytes(data[i + 3 + payload_length : i + total_length], 'big')
-                         # if crc_calculated != crc_received:
-                         #     self._logger.warning(f"RTCM CRC mismatch for type {message_type}")
-                         #     # Decide whether to skip this message or the rest of the buffer
-
-                         # Move index past this complete message
                          i += total_length
-                    else:
-                        # Not enough data for the full message indicated by the length field
-                        # Stop parsing this buffer chunk, wait for more data
-                        break
-                    # --------------------------
-                except IndexError:
-                     # Should not happen with length check, but guard anyway
-                     break
-            else:
-                # Preamble not found, move to the next byte
-                i += 1
+                    else: break # Not enough data for the full message
+                except IndexError: break
+            else: i += 1
         return types_found
 
     def _handle_rtcm_data(self, data: bytes) -> None:
         """Processes received RTCM data and sends it to the GNSS device."""
-        if not data:
-            return
+        if not data: return
 
-        # Basic validation: Check for RTCM preamble at the start
-        if data[0] != 0xD3:
-             # It's possible multiple messages are in 'data', find first preamble
-             first_preamble = data.find(0xD3)
-             if first_preamble == -1:
-                 self._logger.warning(f"Received block without RTCM preamble. Discarding {len(data)} bytes.")
-                 return
-             elif first_preamble > 0:
-                 self._logger.warning(f"Discarding {first_preamble} non-RTCM bytes before first preamble.")
-                 data = data[first_preamble:] # Process data starting from the first found preamble
+        first_preamble = data.find(0xD3)
+        if first_preamble == -1:
+             self._logger.warning(f"Received block without RTCM preamble. Discarding {len(data)} bytes.")
+             return
+        elif first_preamble > 0:
+             self._logger.warning(f"Discarding {first_preamble} non-RTCM bytes before first preamble.")
+             data = data[first_preamble:]
 
-
-        # Attempt to send data to the GNSS device
         bytes_sent = self._gnss_device.write_data(data)
 
         if bytes_sent is not None and bytes_sent > 0:
             now = datetime.now(timezone.utc)
-            # Extract message types before locking state
-            rtcm_types = self._extract_rtcm_message_types(data[:bytes_sent]) # Parse only what was potentially sent
-
-            # Update state safely (only update if write succeeded)
+            rtcm_types = self._extract_rtcm_message_types(data[:bytes_sent])
             with self._state._lock:
                 self._state.ntrip_total_bytes += bytes_sent
                 self._state.ntrip_last_data_time = now
-                self._state.last_rtcm_data_received = data[:20] # Store snippet of received block
-                self._state.rtcm_message_counter += 1 # Count blocks received/processed
-                self._state.ntrip_data_rates.append(bytes_sent) # Store bytes for rate calc
+                self._state.last_rtcm_data_received = data[:20]
+                self._state.rtcm_message_counter += 1
+                self._state.ntrip_data_rates.append(bytes_sent)
                 if rtcm_types:
                     self._state.last_rtcm_message_types.extend(rtcm_types)
-
             self._logger.debug(f"Sent {bytes_sent} bytes of RTCM data to GNSS module. Types: {rtcm_types if rtcm_types else 'None Parsed'}")
-
         elif bytes_sent is None:
              self._logger.error("Failed to send RTCM data to GNSS device (serial error).")
-             # Error already counted by GnssDevice, port likely closed.
-        # else: bytes_sent == 0, logged by GnssDevice if it was a timeout
 
 
     def _run(self) -> None:
         """Main loop for the NTRIP client thread."""
         self._logger.info("NTRIP run loop started.")
         while self._running.is_set():
-            # Check connection status at the start of each loop iteration
             is_connected = self._state.get_state_snapshot()['ntrip_connected']
 
             if is_connected and self._socket is not None:
                 try:
-                    # Set short timeout for reading data to keep loop responsive
                     self._socket.settimeout(1.0)
-                    rtcm_data = self._socket.recv(2048) # Read up to 2KB
-
+                    rtcm_data = self._socket.recv(2048)
                     if rtcm_data:
-                        # Data received, process it
                         self._handle_rtcm_data(rtcm_data)
-                        # Update last data time only after successful processing/sending
                         self._state.update(ntrip_last_data_time=datetime.now(timezone.utc))
                     else:
-                        # Socket closed by server (recv returned empty bytes)
                         self._logger.info("NTRIP connection closed by server. Reconnecting...")
                         self._state.set_ntrip_connected(False, "Closed by server")
                         if self._socket: self._socket.close()
                         self._socket = None
-                        # No immediate reconnect here, let the 'else' block handle it after a delay
-                        time.sleep(self._reconnect_timeout) # Wait before trying to reconnect
-                        continue # Go to next loop iteration to attempt reconnect
-
+                        time.sleep(self._reconnect_timeout)
+                        continue
                 except socket.timeout:
-                    # No data received in the timeout period, this is normal
-                    # Check if it's time to send GGA
                     now = datetime.now(timezone.utc)
                     if (now - self._last_gga_sent_time).total_seconds() >= NTRIP_GGA_INTERVAL:
-                        self._send_gga() # This handles its own errors and potential disconnect
+                        self._send_gga()
                         self._last_gga_sent_time = now
-
-                    # Check for data timeout (no data received for a longer period)
                     last_data_time = self._state.get_state_snapshot().get('ntrip_last_data_time')
                     if last_data_time and (now - last_data_time).total_seconds() > NTRIP_DATA_TIMEOUT:
                         self._logger.warning(f"No RTCM data received for {NTRIP_DATA_TIMEOUT} seconds. Reconnecting...")
                         self._state.set_ntrip_connected(False, "No data received")
                         if self._socket: self._socket.close()
                         self._socket = None
-                        # No wait here, let 'else' block handle reconnect attempt immediately
-                        continue # Trigger reconnect logic in the next iteration
-
+                        continue
                 except (OSError, ConnectionResetError, BrokenPipeError) as e:
-                    # Handle socket errors during receive
                     self._logger.error(f"NTRIP socket error during receive: {e}. Reconnecting...")
                     self._state.increment_ntrip_error_count("ntrip")
                     self._state.set_ntrip_connected(False, f"Receive Error: {str(e)[:20]}")
                     if self._socket: self._socket.close()
                     self._socket = None
-                    time.sleep(self._reconnect_timeout) # Wait before reconnecting
+                    time.sleep(self._reconnect_timeout)
                     continue
                 except Exception as e:
-                    # Catch unexpected errors in the loop
                     self._logger.error(f"Unexpected error in NTRIP receive loop: {e}", exc_info=True)
                     self._state.increment_ntrip_error_count("ntrip")
                     self._state.set_ntrip_connected(False, f"Runtime Error: {str(e)[:20]}")
                     if self._socket: self._socket.close()
                     self._socket = None
-                    time.sleep(self._reconnect_timeout) # Wait before reconnecting
+                    time.sleep(self._reconnect_timeout)
                     continue
-
-
             else:
                 # Not connected, attempt to connect (or reconnect)
-                self._logger.debug(f"NTRIP disconnected, attempting connection... Timeout: {self._reconnect_timeout:.1f}s")
+                # self._logger.debug(f"NTRIP disconnected, attempting connection... Timeout: {self._reconnect_timeout:.1f}s")
                 if self._connect():
-                     # Connection successful, reset backoff timeout
                      self._reconnect_timeout = NTRIP_INITIAL_RECONNECT_TIMEOUT
-                     self._logger.info("NTRIP reconnected successfully.")
+                     self._logger.info("NTRIP (re)connected successfully.")
                 else:
-                    # Connection failed, increase backoff timeout
                     self._reconnect_timeout = min(self._reconnect_timeout * 1.5, NTRIP_MAX_RECONNECT_TIMEOUT)
                     self._logger.info(f"NTRIP connection failed. Retrying in {self._reconnect_timeout:.1f} seconds.")
-                    # Wait before retrying, check running flag periodically
                     wait_start = time.monotonic()
                     while self._running.is_set() and (time.monotonic() - wait_start) < self._reconnect_timeout:
                          time.sleep(0.5) # Sleep in short intervals to check running flag
 
         # --- Cleanup after loop exits ---
         if self._socket:
-             try:
-                 self._socket.close()
-             except OSError: pass # Ignore errors during final close
+             try: self._socket.close()
+             except OSError: pass
              self._socket = None
         self._logger.info("NTRIP run loop finished.")
 
 
-# --- Status Display ---
+# --- Status Display (curses based) ---
 class StatusDisplay:
-    """Formats and prints the system status to the console."""
+    """Formats and prints the system status to the console using curses."""
     def __init__(self, state: GnssState, config: Config):
         self._state = state
         self._config = config
         self._logger = logging.getLogger(self.__class__.__name__)
-        self._running = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        # Color pairs (ID, foreground, background)
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
+        self.COLOR_GREEN = curses.color_pair(1)
+        self.COLOR_YELLOW = curses.color_pair(2)
+        self.COLOR_RED = curses.color_pair(3)
+        self.COLOR_NORMAL = curses.A_NORMAL
+        self.ATTR_BOLD = curses.A_BOLD
 
-    def start(self):
-        """Starts the status display thread."""
-        if self._thread is not None and self._thread.is_alive():
-            self._logger.warning("Status display thread already running.")
-            return
-        self._running.set()
-        self._thread = threading.Thread(target=self._run, name="StatusThread", daemon=True)
-        self._thread.start()
-        self._logger.info("Status display thread started.")
 
-    def stop(self):
-        """Stops the status display thread."""
-        self._running.clear()
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=STATUS_UPDATE_INTERVAL + 0.5)
-        self._logger.info("Status display stopped.")
-
-    def _check_rtcm_types(self, received_types: deque) -> None:
-        """Checks if important RTCM types are present in recent messages."""
+    def _check_rtcm_types(self, stdscr, y: int, received_types: deque) -> int:
+        """Checks important RTCM types and prints status to curses window."""
+        x = 2 # Indentation
         if not received_types:
-            print("\n  No RTCM messages received recently.")
-            return
+            stdscr.addstr(y, x, "No RTCM messages received recently.")
+            return y + 1
 
         present_types = set(received_types)
         missing = []
@@ -1135,161 +1057,188 @@ class StatusDisplay:
                 missing.append(type_name)
 
         if missing:
-            print("\n  \033[91m*** WARNING: Important RTCM types potentially missing! ***\033[0m")
+            stdscr.addstr(y, x, "*** WARNING: Important RTCM types potentially missing! ***", self.COLOR_RED | self.ATTR_BOLD)
+            y += 1
             for m in missing:
-                print(f"  Missing/Not Seen Recently: {m}")
-            print("  \033[93m(Ensure NTRIP mountpoint provides necessary MSM messages for RTK)\033[0m")
+                stdscr.addstr(y, x, f"Missing/Not Seen Recently: {m}", self.COLOR_YELLOW)
+                y += 1
+            stdscr.addstr(y, x, "(Ensure NTRIP mountpoint provides necessary MSM messages for RTK)", self.COLOR_YELLOW)
+            y+=1
         else:
-             print("\n  \033[92mAll checked important RTCM types seen recently.\033[0m")
+             stdscr.addstr(y, x, "All checked important RTCM types seen recently.", self.COLOR_GREEN)
+             y+=1
+        return y # Return the next line number
 
 
-    def _run(self) -> None:
-        """Main loop for the status display thread."""
-        while self._running.is_set():
-            try:
-                state = self._state.get_state_snapshot()
-                self._print_status(state)
-                # Wait for the next interval, checking the running flag
-                # Use wait() on the event for cleaner exit handling
-                self._running.wait(timeout=STATUS_UPDATE_INTERVAL)
-            except Exception as e:
-                self._logger.error(f"Error in status display loop: {e}", exc_info=True)
-                # Avoid rapid looping on error
-                time.sleep(STATUS_UPDATE_INTERVAL)
-        self._logger.info("Status display loop finished.")
+    def print_status(self, stdscr, state: Dict[str, Any]) -> None:
+        """Prints the formatted status to the provided curses window."""
+        stdscr.clear() # Clear screen before drawing
+        max_y, max_x = stdscr.getmaxyx() # Get terminal dimensions
+        y = 0 # Current line number
+
+        try:
+            # --- Header ---
+            header = f" LC29HDA RTK Status - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
+            stdscr.addstr(y, 0, "=" * max_x)
+            y += 1
+            stdscr.addstr(y, 0, header.center(max_x), self.ATTR_BOLD)
+            y += 1
+            stdscr.addstr(y, 0, "=" * max_x)
+            y += 2 # Add empty line
+
+            # --- Helper Function for Lines ---
+            label_width = 25
+            value_start_x = label_width + 4
+            def line(current_y, label, value, indent=2, attr=self.COLOR_NORMAL):
+                if current_y >= max_y -1: return current_y # Prevent writing past screen bottom
+                label_str = f"{' ' * indent}{label:<{label_width}}:"
+                stdscr.addstr(current_y, 0, label_str)
+                # Truncate value if too long for screen width
+                value_str = str(value)
+                available_width = max_x - value_start_x -1 # -1 for safety
+                truncated_value = value_str[:available_width]
+                stdscr.addstr(current_y, value_start_x, truncated_value, attr)
+                return current_y + 1
 
 
-    def _print_status(self, state: Dict[str, Any]) -> None:
-        """Prints the formatted status based on the provided state."""
-        # ANSI escape code to clear screen and move cursor to top-left
-        print("\033[H\033[J", end="")
-        print("=" * 60)
-        print(f" LC29HDA RTK Status - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ")
-        print("=" * 60)
+            # Runtime
+            runtime = datetime.now(timezone.utc) - state['start_time']
+            runtime_str = str(runtime).split('.')[0] # Format as HH:MM:SS
 
-        def line(label, value, indent=2):
-            print(f"{' ' * indent}{label:<25}: {value}")
+            # --- GNSS Information ---
+            stdscr.addstr(y, 0, "[GNSS Information]", self.ATTR_BOLD); y += 1
+            y = line(y, "Firmware Version", state['firmware_version'])
+            y = line(y, "Runtime", runtime_str)
+            y = line(y, "Latitude", f"{state['position']['lat']:.8f}\N{DEGREE SIGN}")
+            y = line(y, "Longitude", f"{state['position']['lon']:.8f}\N{DEGREE SIGN}")
+            y = line(y, "Altitude", f"{state['position']['alt']:.3f} m")
 
-        # Runtime
-        runtime = datetime.now(timezone.utc) - state['start_time']
-        runtime_str = str(runtime).split('.')[0] # Format as HH:MM:SS
-
-        # --- GNSS Information ---
-        print("\n[GNSS Information]")
-        line("Firmware Version", state['firmware_version'])
-        line("Runtime", runtime_str)
-        line("Latitude", f"{state['position']['lat']:.8f}\N{DEGREE SIGN}") # Unicode degree symbol
-        line("Longitude", f"{state['position']['lon']:.8f}\N{DEGREE SIGN}")
-        line("Altitude", f"{state['position']['alt']:.3f} m")
-
-        if state['last_fix_time']:
-            fix_age = (datetime.now(timezone.utc) - state['last_fix_time']).total_seconds()
-            line("Age of GNSS Fix", f"{fix_age:.1f} sec")
-        else:
-            line("Age of GNSS Fix", "N/A")
-
-        if state.get('first_fix_time_sec') is not None:
-            line("Time to First Fix", f"{state['first_fix_time_sec']:.1f} sec")
-        else:
-            line("Time to First Fix", "Pending...")
-
-        rtk_status = state['rtk_status']
-        # Add color to RTK status
-        if rtk_status == "RTK Fixed": color_code = "\033[92m" # Green
-        elif rtk_status == "RTK Float": color_code = "\033[93m" # Yellow
-        elif rtk_status == "No Fix / Invalid": color_code = "\033[91m" # Red
-        else: color_code = "\033[0m" # Default
-        line("RTK Status", f"{color_code}\033[1m{rtk_status}\033[0m") # Bold status + color reset
-
-        line("Fix Type Code", state['fix_type'])
-        line("Satellites Used", state['num_satellites_used'])
-        line("Satellites in View", state['num_satellites_in_view'])
-        line("Max Satellites Seen", state['max_satellites_seen'])
-        line("HDOP", f"{state['hdop']:.2f}")
-
-        # Satellite Systems
-        if state['satellite_systems']:
-            systems_str = ", ".join(f"{sys}: {count}" for sys, count in sorted(state['satellite_systems'].items()))
-            line("Satellites by System", systems_str)
-        else:
-            line("Satellites by System", "N/A")
-
-        # SNR Statistics
-        snr_stats = state['snr_stats']
-        if snr_stats and snr_stats.get('avg', 0) > 0:
-            line("SNR Stats (dB-Hz)", f"Min: {snr_stats['min']:.0f}, Max: {snr_stats['max']:.0f}, Avg: {snr_stats['avg']:.1f}")
-            line("Signal Quality Counts", f"Good(>=30): {int(snr_stats['good_count'])}, Bad(<20): {int(snr_stats['bad_count'])}")
-        else:
-             line("SNR Stats (dB-Hz)", "N/A")
-
-        # Fix History
-        fix_counter = state['fix_type_counter']
-        if fix_counter:
-            total_fixes = sum(fix_counter.values())
-            if total_fixes > 0:
-                # Sort by count descending for readability
-                sorted_history = sorted(fix_counter.items(), key=lambda item: item[1], reverse=True)
-                history_str = ", ".join(f"{k}: {v*100/total_fixes:.1f}%" for k, v in sorted_history)
-                line("Fix History (%)", history_str)
+            if state['last_fix_time']:
+                fix_age = (datetime.now(timezone.utc) - state['last_fix_time']).total_seconds()
+                age_attr = self.COLOR_YELLOW if fix_age > 10 else self.COLOR_NORMAL
+                y = line(y, "Age of GNSS Fix", f"{fix_age:.1f} sec", attr=age_attr)
             else:
-                 line("Fix History (%)", "No fixes yet")
+                y = line(y, "Age of GNSS Fix", "N/A")
+
+            if state.get('first_fix_time_sec') is not None:
+                y = line(y, "Time to First Fix", f"{state['first_fix_time_sec']:.1f} sec")
+            else:
+                y = line(y, "Time to First Fix", "Pending...")
+
+            # RTK Status with color
+            rtk_status = state['rtk_status']
+            rtk_attr = self.ATTR_BOLD
+            if rtk_status == "RTK Fixed": rtk_attr |= self.COLOR_GREEN
+            elif rtk_status == "RTK Float": rtk_attr |= self.COLOR_YELLOW
+            elif rtk_status == "No Fix / Invalid": rtk_attr |= self.COLOR_RED
+            y = line(y, "RTK Status", rtk_status, attr=rtk_attr)
+
+            y = line(y, "Fix Type Code", state['fix_type'])
+            y = line(y, "Satellites Used", state['num_satellites_used'])
+            y = line(y, "Satellites in View", state['num_satellites_in_view'])
+            y = line(y, "Max Satellites Seen", state['max_satellites_seen'])
+            y = line(y, "HDOP", f"{state['hdop']:.2f}")
+
+            # Satellite Systems
+            if state['satellite_systems']:
+                systems_str = ", ".join(f"{sys}: {count}" for sys, count in sorted(state['satellite_systems'].items()))
+                y = line(y, "Satellites by System", systems_str)
+            else:
+                y = line(y, "Satellites by System", "N/A")
+
+            # SNR Statistics
+            snr_stats = state['snr_stats']
+            if snr_stats and snr_stats.get('avg', 0) > 0:
+                y = line(y, "SNR Stats (dB-Hz)", f"Min: {snr_stats['min']:.0f}, Max: {snr_stats['max']:.0f}, Avg: {snr_stats['avg']:.1f}")
+                y = line(y, "Signal Quality Counts", f"Good(>=30): {int(snr_stats['good_count'])}, Bad(<20): {int(snr_stats['bad_count'])}")
+            else:
+                 y = line(y, "SNR Stats (dB-Hz)", "N/A")
+
+            # Fix History
+            fix_counter = state['fix_type_counter']
+            if fix_counter:
+                total_fixes = sum(fix_counter.values())
+                if total_fixes > 0:
+                    sorted_history = sorted(fix_counter.items(), key=lambda item: item[1], reverse=True)
+                    history_str = ", ".join(f"{k}: {v*100/total_fixes:.1f}%" for k, v in sorted_history)
+                    y = line(y, "Fix History (%)", history_str)
+                else:
+                     y = line(y, "Fix History (%)", "No fixes yet")
+            y += 1 # Add empty line
+
+            # --- NTRIP Connection ---
+            stdscr.addstr(y, 0, "[NTRIP Connection]", self.ATTR_BOLD); y += 1
+            y = line(y, "NTRIP Server", f"{self._config.ntrip_server}:{self._config.ntrip_port}/{self._config.ntrip_mountpoint}")
+
+            ntrip_status_msg = state['ntrip_status_message']
+            ntrip_conn_status = 'Connected' if state['ntrip_connected'] else 'Disconnected'
+            ntrip_attr = self.COLOR_GREEN if state['ntrip_connected'] else self.COLOR_RED
+            y = line(y, "NTRIP Status", f"{ntrip_conn_status} - {ntrip_status_msg}", attr=ntrip_attr)
+
+            if state.get('last_ntrip_connect_time_sec') is not None:
+                y = line(y, "NTRIP Connect Time", f"{state['last_ntrip_connect_time_sec']:.2f} sec")
+            y = line(y, "NTRIP Reconnects", state['ntrip_reconnect_attempts'])
+            y = line(y, "Total RTCM Bytes Rx", f"{state['ntrip_total_bytes']:,}")
+
+            if state['ntrip_last_data_time']:
+                rtcm_age = (datetime.now(timezone.utc) - state['ntrip_last_data_time']).total_seconds()
+                rtcm_age_attr = self.COLOR_RED if rtcm_age > NTRIP_DATA_TIMEOUT else self.COLOR_NORMAL
+                y = line(y, "RTCM Data Age", f"{rtcm_age:.1f} sec", attr=rtcm_age_attr)
+            else:
+                y = line(y, "RTCM Data Age", "N/A")
+
+            # Calculate average data rate
+            rates_deque = state['ntrip_data_rates']
+            avg_rate_bps = sum(rates_deque) / len(rates_deque) if rates_deque else 0
+            y = line(y, "Avg RTCM Rate (last min)", f"{avg_rate_bps:.1f} bytes/sec")
+
+            # RTCM Message Info
+            y = line(y, "RTCM Blocks Received", state['rtcm_message_counter'])
+            rtcm_types_list = list(state['last_rtcm_message_types'])
+            # Truncate long list for display
+            max_types_display = (max_x - value_start_x - 5) // 4 # Approx chars per type
+            types_str = str(rtcm_types_list) if not rtcm_types_list else str(rtcm_types_list[:max_types_display]) + ('...' if len(rtcm_types_list)>max_types_display else '')
+            y = line(y, "Last RTCM Types Seen", types_str if rtcm_types_list else 'None')
+
+            # Check important types (prints directly)
+            y = self._check_rtcm_types(stdscr, y, state['last_rtcm_message_types'])
+            y += 1
+
+            # --- Diagnostics & Fallback ---
+            stdscr.addstr(y, 0, "[Diagnostics]", self.ATTR_BOLD); y += 1
+            y = line(y, "GPS Serial/Parse Errors", state['gps_error_count'])
+            y = line(y, "NTRIP Connection Errors", state['ntrip_error_count'])
+            if state.get('last_command_response_time_sec') is not None:
+                 resp_time_ms = state['last_command_response_time_sec'] * 1000
+                 y = line(y, "Last GNSS Cmd Resp Time", f"{resp_time_ms:.1f} ms")
+
+            if not state['have_position_lock']:
+                y+=1 # Empty line before fallback info
+                stdscr.addstr(y, 2, "[INFO: Using Fallback Position for GGA]", self.COLOR_YELLOW); y += 1
+                y = line(y, "Default Latitude", f"{self._config.default_lat:.8f}\N{DEGREE SIGN}", indent=4)
+                y = line(y, "Default Longitude", f"{self._config.default_lon:.8f}\N{DEGREE SIGN}", indent=4)
+                y = line(y, "Default Altitude", f"{self._config.default_alt:.2f} m", indent=4)
 
 
-        # --- NTRIP Connection ---
-        print("\n[NTRIP Connection]")
-        line("NTRIP Server", f"{self._config.ntrip_server}:{self._config.ntrip_port}/{self._config.ntrip_mountpoint}")
-        ntrip_status_msg = state['ntrip_status_message']
-        ntrip_conn_status = 'Connected' if state['ntrip_connected'] else 'Disconnected'
-        color_code = "\033[92m" if state['ntrip_connected'] else "\033[91m" # Green/Red
-        line("NTRIP Status", f"{color_code}{ntrip_conn_status}\033[0m - {ntrip_status_msg}")
-
-        if state.get('last_ntrip_connect_time_sec') is not None:
-            line("NTRIP Connect Time", f"{state['last_ntrip_connect_time_sec']:.2f} sec")
-        line("NTRIP Reconnects", state['ntrip_reconnect_attempts'])
-        line("Total RTCM Bytes Rx", f"{state['ntrip_total_bytes']:,}") # Formatted number
-
-        if state['ntrip_last_data_time']:
-            rtcm_age = (datetime.now(timezone.utc) - state['ntrip_last_data_time']).total_seconds()
-            color_code = "\033[91m" if rtcm_age > NTRIP_DATA_TIMEOUT else "\033[0m"
-            line("RTCM Data Age", f"{color_code}{rtcm_age:.1f} sec\033[0m")
-        else:
-            line("RTCM Data Age", "N/A")
-
-        # Calculate average data rate over the window (approx 60s)
-        rates_deque = state['ntrip_data_rates']
-        if rates_deque:
-             # Ensure we don't divide by zero if deque becomes empty between snapshot and here
-             avg_rate_bps = sum(rates_deque) / len(rates_deque) if rates_deque else 0
-             line("Avg RTCM Rate (last min)", f"{avg_rate_bps:.1f} bytes/sec")
-        else:
-             line("Avg RTCM Rate (last min)", "0.0 bytes/sec")
+            # Add final dividing line
+            if y < max_y -1:
+                 stdscr.addstr(y+1, 0, "=" * max_x)
 
 
-        # RTCM Message Info
-        line("RTCM Blocks Received", state['rtcm_message_counter']) # Changed label for clarity
-        rtcm_types_list = list(state['last_rtcm_message_types'])
-        line("Last RTCM Types Seen", f"{rtcm_types_list if rtcm_types_list else 'None'}")
-        # Check important types
-        self._check_rtcm_types(state['last_rtcm_message_types'])
+        except curses.error as e:
+            # Handle potential error if terminal size is too small
+            self._logger.error(f"Curses error during printing: {e}. Terminal might be too small.")
+            # Try to print a minimal message
+            try:
+                stdscr.clear()
+                stdscr.addstr(0, 0, f"Error: {e}. Terminal too small?")
+            except curses.error:
+                pass # Avoid recursive error
 
+        finally:
+            # Refresh the screen to show updates
+            stdscr.refresh()
 
-        # --- Diagnostics & Fallback ---
-        print("\n[Diagnostics]")
-        line("GPS Serial/Parse Errors", state['gps_error_count'])
-        line("NTRIP Connection Errors", state['ntrip_error_count'])
-        if state.get('last_command_response_time_sec') is not None:
-             resp_time_ms = state['last_command_response_time_sec'] * 1000
-             line("Last GNSS Cmd Resp Time", f"{resp_time_ms:.1f} ms")
-
-        if not state['have_position_lock']:
-            print("\n  \033[93m[INFO: Using Fallback Position for GGA]\033[0m")
-            line("  Default Latitude", f"{self._config.default_lat:.8f}\N{DEGREE SIGN}", indent=4)
-            line("  Default Longitude", f"{self._config.default_lon:.8f}\N{DEGREE SIGN}", indent=4)
-            line("  Default Altitude", f"{self._config.default_alt:.2f} m", indent=4)
-
-
-        print("\n" + "=" * 60)
-        sys.stdout.flush() # Ensure output is immediate
 
 # --- Main Controller ---
 class RtkController:
@@ -1300,7 +1249,8 @@ class RtkController:
         self._gnss_device = GnssDevice(config.serial_port, config.baud_rate, self._state)
         self._nmea_parser = NmeaParser(self._state)
         self._ntrip_client = NtripClient(config, self._state, self._gnss_device)
-        self._status_display = StatusDisplay(self._state, config)
+        # Status display is handled by the main curses loop now
+        # self._status_display = StatusDisplay(self._state, config)
         self._running = threading.Event()
         self._gnss_read_thread: Optional[threading.Thread] = None
         self._logger = logger # Use main logger
@@ -1316,9 +1266,6 @@ class RtkController:
                       continue # Try again after next loop iteration wait
                  else:
                       self._logger.info("Reconnected to GNSS device.")
-                      # Optional: Re-configure after reconnect?
-                      # self._gnss_device.configure_module()
-
 
             line = self._gnss_device.read_line()
             if line: # Process non-empty lines
@@ -1327,19 +1274,18 @@ class RtkController:
             elif line is None: # Indicates serial error or closed port
                  self._logger.warning("GNSS read loop detected closed/error state. Will attempt reconnect.")
                  time.sleep(2) # Wait before next connection attempt
-            # else: line is "", meaning no data available currently, just loop again
 
-            # Small sleep to prevent busy-waiting if read_line is very fast and often empty
+            # Small sleep to prevent busy-waiting and yield CPU time
             time.sleep(0.005)
 
         self._logger.info("GNSS data reading loop finished.")
 
     def start(self) -> bool:
-        """Initializes components and starts all threads."""
-        self._logger.info("Starting RTK Controller...")
+        """Initializes components and starts worker threads."""
+        self._logger.info("Starting RTK Controller components...")
 
-        if not self._gnss_device.is_connected():
-             self._logger.critical("Failed to connect to GNSS device on startup. Please check port and permissions. Exiting.")
+        if not self._gnss_device.connect(): # Try connecting here
+             self._logger.critical("Failed to connect to GNSS device on startup. Please check port and permissions.")
              return False # Indicate failure
 
         # Configure the module
@@ -1354,10 +1300,9 @@ class RtkController:
         # Start NTRIP client thread
         self._ntrip_client.start()
 
-        # Start Status display thread
-        self._status_display.start()
+        # Status display thread is replaced by the main curses loop
 
-        self._logger.info("All components started. Press Ctrl+C to stop.")
+        self._logger.info("Worker threads started.")
         return True # Indicate success
 
     def stop(self):
@@ -1366,121 +1311,161 @@ class RtkController:
              self._logger.info("RTK Controller already stopped.")
              return
 
-        self._logger.info("Stopping RTK Controller...")
+        self._logger.info("Stopping RTK Controller components...")
         self._running.clear() # Signal all loops to stop
 
-        # Stop threads in an order that minimizes dependencies during shutdown
-        self._status_display.stop()
-        self._ntrip_client.stop() # Stops trying to send GGA/read RTCM
+        # Stop NTRIP client first (it might be writing to GNSS device)
+        self._ntrip_client.stop()
 
-        # Wait for GNSS reading thread (which might be blocked on readline)
-        if self._gnss_read_thread and self._gnss_read_thread.is_alive():
-            # No need to join with timeout if it's daemon, just closing the serial port should unblock it eventually
-            # self._gnss_read_thread.join(timeout=SERIAL_TIMEOUT + 1.0)
-             pass
-
+        # Stop GNSS reading thread (no need to join daemon thread explicitly)
 
         # Close serial port (this should help unblock the read thread if it's stuck)
         self._gnss_device.close()
 
-        # Final check if read thread exited
-        if self._gnss_read_thread and self._gnss_read_thread.is_alive():
-             self._logger.warning("GNSS read thread may not have exited cleanly after port close.")
+        self._logger.info("RTK Controller components stopped.")
+
+    # Method to get state for the main display loop
+    def get_current_state(self) -> Dict[str, Any]:
+        return self._state.get_state_snapshot()
+
+    # Property to check if controller should keep running
+    @property
+    def is_running(self) -> bool:
+        return self._running.is_set()
 
 
-        self._logger.info("RTK Controller stopped.")
+# --- Main Execution with Curses ---
+def main_curses(stdscr, args: argparse.Namespace):
+    """Main function wrapped by curses."""
+    # Curses setup
+    curses.curs_set(0) # Hide cursor
+    stdscr.nodelay(True) # Make getch non-blocking
+    stdscr.timeout(int(STATUS_UPDATE_INTERVAL * 1000)) # Timeout for getch in ms
 
-# --- Main Execution ---
+    # Initialize components
+    config = Config(args)
+    controller = RtkController(config)
+    status_display = StatusDisplay(controller._state, config) # Init display with state/config
+
+    if not controller.start():
+        # Need to display error message even within curses
+        stdscr.clear()
+        stdscr.addstr(0, 0, "Error: Failed to start RTK Controller. Check logs. Press any key to exit.")
+        stdscr.refresh()
+        stdscr.nodelay(False) # Make getch blocking
+        stdscr.getch()
+        return # Exit main_curses
+
+    try:
+        while controller.is_running:
+            # Check for keyboard input (e.g., 'q' to quit)
+            try:
+                key = stdscr.getch()
+                if key == ord('q') or key == ord('Q'):
+                    logger.info("Quit key pressed. Shutting down...")
+                    break # Exit the main loop
+                # Add other key handlers if needed
+            except curses.error:
+                 # Ignore errors from getch (like timeout)
+                 pass
+
+
+            # Get current state and print status
+            current_state = controller.get_current_state()
+            status_display.print_status(stdscr, current_state)
+
+            # Optional: Check if worker threads are still alive
+            # if not controller._gnss_read_thread.is_alive() or \
+            #    not controller._ntrip_client._thread.is_alive():
+            #      logger.error("A worker thread has died. Shutting down.")
+            #      # Display error in curses window
+            #      try:
+            #          max_y, max_x = stdscr.getmaxyx()
+            #          error_msg = "ERROR: Worker thread died. Check log. Exiting."
+            #          stdscr.addstr(max_y - 1, 0, error_msg[:max_x-1], status_display.COLOR_RED | status_display.ATTR_BOLD)
+            #          stdscr.refresh()
+            #          time.sleep(5) # Show error briefly
+            #      except curses.error: pass
+            #      break # Exit main loop
+
+
+            # Wait handled by stdscr.timeout()
+
+    except KeyboardInterrupt:
+        logger.info("Ctrl+C received in curses loop. Shutting down...")
+    except Exception as e:
+         logger.critical(f"Unhandled exception in curses loop: {e}", exc_info=True)
+         # Try to display error in curses before exiting wrapper
+         try:
+             stdscr.clear()
+             stdscr.addstr(0, 0, f"FATAL ERROR: {e}. Check log. Press key.")
+             stdscr.refresh()
+             stdscr.nodelay(False)
+             stdscr.getch()
+         except: pass # Ignore errors during emergency display
+    finally:
+        logger.info("Exiting curses loop, stopping controller...")
+        controller.stop()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='LC29HDA RTK GNSS Client - Spec V1.4)',
+        description='LC29HDA RTK GNSS Client (Refactored - Spec V1.4 - Curses UI)',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter # Show defaults in help
     )
-    # Serial Port Arguments
+    # --- Add Arguments (same as before) ---
     parser.add_argument('--port', default=DEFAULT_SERIAL_PORT, help='Serial port of GNSS receiver')
     parser.add_argument('--baud', type=int, default=DEFAULT_BAUD_RATE, help='Baud rate for serial connection')
-
-    # NTRIP Arguments
     ntrip_group = parser.add_argument_group('NTRIP Caster Configuration')
     ntrip_group.add_argument('--ntrip-server', default=DEFAULT_NTRIP_SERVER, help='NTRIP caster server address')
     ntrip_group.add_argument('--ntrip-port', type=int, default=DEFAULT_NTRIP_PORT, help='NTRIP caster server port')
     ntrip_group.add_argument('--ntrip-mountpoint', default=DEFAULT_NTRIP_MOUNTPOINT, help='NTRIP caster mountpoint')
     ntrip_group.add_argument('--ntrip-user', default=DEFAULT_NTRIP_USERNAME, help='NTRIP username')
     ntrip_group.add_argument('--ntrip-pass', default=DEFAULT_NTRIP_PASSWORD, help='NTRIP password')
-
-    # Fallback Position Arguments
     pos_group = parser.add_argument_group('Fallback Position (Used for GGA when no fix)')
     pos_group.add_argument('--default-lat', type=float, default=DEFAULT_LAT, help='Default latitude')
     pos_group.add_argument('--default-lon', type=float, default=DEFAULT_LON, help='Default longitude')
     pos_group.add_argument('--default-alt', type=float, default=DEFAULT_ALT, help='Default altitude (meters)')
-
-    # Logging Arguments
     log_group = parser.add_argument_group('Logging Configuration')
-    log_group.add_argument('--log-file', default='lc29hda_rtk.log', help='Log file name')
-    log_group.add_argument('--debug', action='store_true', help='Enable debug level logging to file and console')
+    log_group.add_argument('--log-file', default='lc29hda_rtk.log', help='Log file name (curses UI disables console logging)')
+    log_group.add_argument('--debug', action='store_true', help='Enable debug level logging to file')
+    # --- End Arguments ---
 
     args = parser.parse_args()
 
-    # --- Setup Logging Handlers ---
+    # --- Setup File Logging ONLY ---
     log_level = logging.DEBUG if args.debug else logging.INFO
     log_formatter = logging.Formatter(LOG_FORMAT)
-
-    # Clear existing handlers (if any added by basicConfig)
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.setLevel(log_level) # Set level on root logger
-
-    # Console Handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(log_formatter)
-    console_handler.setLevel(log_level) # Console level matches debug flag
-    root_logger.addHandler(console_handler)
-
-
-    # File Handler
     try:
+        # Ensure logger is clean before adding handler
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        root_logger.setLevel(log_level)
+
         file_handler = logging.FileHandler(args.log_file, mode='w') # Overwrite log each run
         file_handler.setFormatter(log_formatter)
-        file_handler.setLevel(logging.DEBUG) # Always log DEBUG to file if enabled overall
+        file_handler.setLevel(logging.DEBUG) # Log everything to file
         root_logger.addHandler(file_handler)
+        logger.info(f"File logging setup ({args.log_file}) at level {logging.getLevelName(log_level)}")
+        if args.debug: logger.debug("Debug logging is ON.")
     except Exception as e:
          print(f"Error setting up file logger ({args.log_file}): {e}", file=sys.stderr)
-    # ---------------------------
+         sys.exit(1)
+    # --- End Logging Setup ---
 
 
-    logger.info(f"Starting application with log level {logging.getLevelName(log_level)}")
-    if args.debug: logger.debug("Debug logging is ON.")
-
-
-    config = Config(args)
-    controller = RtkController(config)
-    main_thread = threading.current_thread()
-
+    # Run the main application within the curses wrapper
     try:
-        if controller.start():
-            # Keep main thread alive while other threads run.
-            # Exit if any of the daemon threads die unexpectedly? Or just rely on Ctrl+C?
-            # Relying on Ctrl+C for now.
-             while controller._running.is_set(): # Check controller's running flag
-                 # Check if threads are alive periodically (optional)
-                 # if not controller._gnss_read_thread.is_alive() or \
-                 #    not controller._ntrip_client._thread.is_alive() or \
-                 #    not controller._status_display._thread.is_alive():
-                 #     logger.error("A worker thread has died unexpectedly. Shutting down.")
-                 #     break
-                 time.sleep(1)
-
-        else:
-             logger.critical("Controller failed to start. Check logs.")
-
-    except KeyboardInterrupt:
-        logger.info("Ctrl+C received. Shutting down...")
+        curses.wrapper(main_curses, args)
+        print("Application finished normally.")
+    except curses.error as e:
+         print(f"Curses initialization failed: {e}", file=sys.stderr)
+         print("Ensure your terminal supports curses (e.g., not basic Windows cmd, use WSL, Linux terminal, macOS terminal).", file=sys.stderr)
+         sys.exit(1)
     except Exception as e:
-         logger.critical(f"Unhandled exception in main thread: {e}", exc_info=True)
+         print(f"An unexpected error occurred: {e}", file=sys.stderr)
+         logger.critical(f"Unhandled exception preventing curses wrapper: {e}", exc_info=True)
+         sys.exit(1)
     finally:
-        # Ensure stop is called even if start failed or raised exception
-        if 'controller' in locals() and isinstance(controller, RtkController):
-             controller.stop()
-        logger.info("Shutdown complete.")
-        # Ensure all handlers are closed
+        # Ensure logging is shutdown cleanly
         logging.shutdown()
