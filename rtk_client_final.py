@@ -1,23 +1,22 @@
-# rtk_client_final.py - Main entry point for the RTK Client application
+# rtk_client_final.py
 
 import argparse
 import curses
 import logging
 import sys
 import time
-import signal # Import signal handling
-import traceback # Import traceback for detailed error logging
+import signal
+import traceback
 
 # Import necessary components from other modules
 from rtk_constants import DEFAULT_LOG_FILENAME, LOG_FORMAT
 from rtk_config import Config, parse_arguments
 from rtk_controller import RtkController
-# --- Import StatusDisplay explicitly to check its attributes if needed ---
 import status_display # Import the module
 from status_display import StatusDisplay # Import the class
 
 # Logger for the main application part
-logger = logging.getLogger("main")
+logger = logging.getLogger("main") # Use 'main' logger defined in logging setup
 
 # Global flag to signal shutdown
 shutdown_requested = False
@@ -31,208 +30,191 @@ def signal_handler(sig, frame):
         except ValueError:
             sig_name = f"Signal {sig}"
         log_message = f"{sig_name} received. Initiating shutdown..."
+        # Use the main logger here
         logger.warning(log_message)
-        # Try logging to UI if possible, but don't rely on it during shutdown
-        # if controller and controller.state: controller.state.add_ui_log_message(log_message) # Avoid accessing controller globally
         shutdown_requested = True
     else:
         logger.warning("Multiple shutdown signals received. Forcing exit might be required.")
-        # Consider a more forceful exit if needed after a delay
-        # sys.exit(1)
 
-
+# *** MODIFICATION START: Enhanced main_curses ***
 def main_curses(stdscr, args: argparse.Namespace):
     """Main function wrapped by curses."""
     controller = None
-    # Initialize status_display to None
-    status_display_obj = None # Use a different name to avoid confusion with module
-    global shutdown_requested # Access the global flag
+    status_display_obj = None
+    global shutdown_requested
 
     try:
-        # Initialize components using parsed arguments
+        # --- Curses Initialization Logging ---
+        logger.info("curses.wrapper entered. Initializing components...")
+
+        # Initialize components
         config = Config(args)
         controller = RtkController(config)
-        # Ensure controller.state exists before passing it
         if not hasattr(controller, 'state') or controller.state is None:
-             # This should not happen based on RtkController.__init__
              logger.critical("Controller state object not initialized!")
-             # Display error directly using stdscr as status_display isn't created yet
-             stdscr.clear()
-             stdscr.addstr(0, 0, "FATAL: Controller state missing. Check logs. Press key.", curses.A_BOLD | curses.color_pair(3)) # Assume color pair 3 is RED
-             stdscr.refresh()
-             stdscr.nodelay(False)
-             stdscr.getch()
-             return
+             # Cannot easily display curses error here as setup might fail
+             return # Exit early
 
-        # --- Removed module check logging ---
-        # logger.info(f"Imported status_display module: {status_display}")
-        # logger.info(f"Attributes of status_display module: {dir(status_display)}")
-        # --- End module check ---
-
-        # Create the StatusDisplay object
-        status_display_obj = StatusDisplay(controller.state, config) # Access state via property
-
-        # Check if status_display object was created successfully
+        status_display_obj = StatusDisplay(controller.state, config)
         if not isinstance(status_display_obj, StatusDisplay):
              logger.critical("StatusDisplay object failed to initialize or is wrong type!")
              logger.critical(f"Object type is: {type(status_display_obj)}")
-             # Display error directly using stdscr
-             stdscr.clear()
-             stdscr.addstr(0, 0, "FATAL: StatusDisplay failed. Check logs. Press key.", curses.A_BOLD | curses.color_pair(3))
-             stdscr.refresh()
-             stdscr.nodelay(False)
-             stdscr.getch()
-             return
+             return # Exit early
 
-        status_display_obj._setup_curses(stdscr) # Setup curses in the display object
+        # Setup curses within the display object
+        status_display_obj._setup_curses(stdscr)
+        logger.info("Curses setup complete within StatusDisplay.")
 
-        if not controller.start():
-            # Use curses to display error before exiting wrapper
+        # --- Controller Start with Error Handling ---
+        try:
+            if not controller.start():
+                logger.error("RtkController failed to start. See previous logs.")
+                # Attempt to show error in curses before exiting
+                try:
+                    stdscr.clear()
+                    color_red = getattr(status_display_obj, 'COLOR_RED', curses.A_NORMAL)
+                    attr_bold = getattr(status_display_obj, 'ATTR_BOLD', curses.A_NORMAL)
+                    stdscr.addstr(0, 0, "Error: Failed to start RTK Controller. Check logs. Press key.", color_red | attr_bold)
+                    stdscr.refresh()
+                    stdscr.nodelay(False)
+                    stdscr.getch()
+                except Exception as display_err:
+                    logger.error(f"Error displaying controller startup failure message: {display_err}")
+                return # Exit main_curses
+            logger.info("RtkController started successfully.")
+        except Exception as start_err:
+            logger.critical(f"Unexpected exception during RtkController start: {start_err}", exc_info=True)
+            # Attempt to show error in curses
             try:
                 stdscr.clear()
-                # Use color attributes from status_display if available, else fallback
                 color_red = getattr(status_display_obj, 'COLOR_RED', curses.A_NORMAL)
                 attr_bold = getattr(status_display_obj, 'ATTR_BOLD', curses.A_NORMAL)
-                stdscr.addstr(0, 0, "Error: Failed to start RTK Controller. Check logs. Press any key.", color_red | attr_bold)
+                stdscr.addstr(0, 0, f"FATAL: Controller start failed: {start_err}. Check logs. Press key.", color_red | attr_bold)
                 stdscr.refresh()
-                stdscr.nodelay(False) # Make getch blocking
+                stdscr.nodelay(False)
                 stdscr.getch()
-            except Exception as e:
-                logger.error(f"Error displaying startup failure message: {e}")
+            except Exception as display_err:
+                logger.error(f"Error displaying controller start exception message: {display_err}")
             return # Exit main_curses
 
-        # Main application loop - check controller and shutdown flag
+        # --- Main Application Loop ---
+        logger.info("Entering main application loop...")
         while controller.is_running and not shutdown_requested:
-            key = stdscr.getch() # Check for input (non-blocking due to timeout set in setup_curses)
+            try:
+                key = stdscr.getch()
 
-            if key == curses.KEY_RESIZE:
-                 # Handle terminal resize
-                 try:
-                      # It's generally recommended to recreate windows on resize
-                      curses.update_lines_cols() # Update curses' internal size variables
-                      if isinstance(status_display_obj, StatusDisplay):
-                           status_display_obj.trigger_redraw() # Signal display to recreate windows
-                      logger.info("Terminal resized. Redrawing UI.")
-                      if controller and controller.state: controller.state.add_ui_log_message("Terminal resized.")
-                      # Optional: redraw immediately? Or let next loop handle it?
-                      # stdscr.clear() # Force clear before redraw?
-                      # status_display_obj.update_display(stdscr) # Redraw now
-                 except curses.error as e:
-                      logger.error(f"Error handling resize: {e}")
-                      # May need more robust handling if resize causes issues
-            elif key == ord('q') or key == ord('Q'):
-                # Handle quit command
-                logger.info("Quit key 'q' pressed. Initiating shutdown...")
-                if controller and controller.state: controller.state.add_ui_log_message("Shutdown initiated by user (q).")
-                shutdown_requested = True # Signal shutdown
-                break # Exit the main loop immediately now shutdown_requested is True
-            # Add other key handlers here if needed (e.g., pause, toggle debug)
-            # elif key == ord('p'): logger.info("Pause key pressed (not implemented).")
+                if key == curses.KEY_RESIZE:
+                    try:
+                        curses.update_lines_cols()
+                        if isinstance(status_display_obj, StatusDisplay):
+                            status_display_obj.trigger_redraw()
+                        logger.info("Terminal resized. Redrawing UI.")
+                        if controller and controller.state: controller.state.add_ui_log_message("Terminal resized.")
+                    except curses.error as resize_err:
+                        logger.error(f"Error handling resize: {resize_err}")
+                    except Exception as resize_err_gen:
+                        logger.error(f"Unexpected error during resize handling: {resize_err_gen}", exc_info=True)
 
-            # --- Main Display Update ---
-            # Check if status_display object is still valid before calling method
-            if isinstance(status_display_obj, StatusDisplay):
-                try:
-                    # --- Removed dir() logging ---
-                    # logger.debug(f"Attempting to call update_display. Object type: {type(status_display_obj)}")
-                    # logger.critical(f"Attributes of status_display_obj: {dir(status_display_obj)}")
-                    # --- End dir() logging ---
+                elif key == ord('q') or key == ord('Q'):
+                    logger.info("Quit key 'q' pressed. Initiating shutdown...")
+                    if controller and controller.state: controller.state.add_ui_log_message("Shutdown initiated by user (q).")
+                    shutdown_requested = True
+                    break # Exit loop
 
-                    # *** THIS IS THE LINE THAT WAS PREVIOUSLY FAILING ***
-                    status_display_obj.update_display(stdscr) # Update display using display object method
+                # --- Display Update with Error Handling ---
+                if isinstance(status_display_obj, StatusDisplay):
+                    try:
+                        status_display_obj.update_display(stdscr)
+                    except AttributeError as ae:
+                         logger.critical(f"AttributeError calling update_display: {ae}", exc_info=True)
+                         logger.critical(f"Object type IS: {type(status_display_obj)}")
+                         shutdown_requested = True # Trigger shutdown
+                         # Error display attempt moved to outer except block for loop errors
+                         raise # Re-raise to be caught by the loop's general handler
+                    except curses.error as disp_curses_err:
+                        logger.error(f"Curses error during display update: {disp_curses_err}. Triggering redraw.")
+                        if isinstance(status_display_obj, StatusDisplay): status_display_obj.trigger_redraw()
+                    except Exception as disp_err:
+                         logger.error(f"Unexpected error during display update: {disp_err}", exc_info=True)
+                         if isinstance(status_display_obj, StatusDisplay): status_display_obj.trigger_redraw()
+                else:
+                    logger.critical("Error: status_display_obj is not a StatusDisplay instance in main loop!")
+                    shutdown_requested = True # Trigger shutdown
+                    break # Exit loop
 
-                except AttributeError as ae:
-                     # Log the specific AttributeError in detail (Should not happen now)
-                     logger.critical(f"AttributeError calling update_display: {ae}", exc_info=True)
-                     logger.critical(f"Object type IS: {type(status_display_obj)}")
-                     shutdown_requested = True # Trigger shutdown on this critical error
-                     # Attempt to show minimal error in curses
-                     try:
-                         if not stdscr.isendwin():
-                              stdscr.clear()
-                              stdscr.addstr(0, 0, f"FATAL Display Error: {ae}. Check log.", curses.A_BOLD | curses.color_pair(3))
-                              stdscr.refresh()
-                              time.sleep(3) # Pause to show error
-                     except: pass # Ignore errors during emergency display
-                except curses.error as e:
-                    # Handle potential curses error during display update (e.g., after resize)
-                    logger.error(f"Curses error during display update: {e}. Triggering redraw.")
-                    if isinstance(status_display_obj, StatusDisplay): status_display_obj.trigger_redraw() # Signal full redraw needed
-                except Exception as e: # Catch any other unexpected error during display update
-                    logger.error(f"Unexpected error during display update: {e}", exc_info=True)
-                    if isinstance(status_display_obj, StatusDisplay): status_display_obj.trigger_redraw() # Trigger redraw as state might be inconsistent
-            else:
-                # This case should not be reached if initialization checks pass
-                logger.critical("Error: status_display_obj is not a StatusDisplay instance in main loop!")
-                shutdown_requested = True # Trigger shutdown
+            # --- Exception Handling for the Main Loop Iteration ---
+            except KeyboardInterrupt:
+                 # Should be caught by signal handler, but handle defensively
+                 if not shutdown_requested:
+                      logger.warning("KeyboardInterrupt caught inside main loop. Initiating shutdown...")
+                      if controller and controller.state: controller.state.add_ui_log_message("Shutdown initiated by user (Ctrl+C).")
+                      shutdown_requested = True
+                 break # Exit loop
+            except curses.error as loop_curses_err:
+                 # Handle curses errors that might break the loop (less likely now with specific handling)
+                 logger.critical(f"Critical Curses error in main loop iteration: {loop_curses_err}", exc_info=True)
+                 shutdown_requested = True
+                 # Attempt final error display after loop breaks
+                 break
+            except Exception as loop_err:
+                 # Catch any other unexpected error during the loop iteration
+                 logger.critical(f"Unhandled exception in main_curses loop iteration: {loop_err}", exc_info=True)
+                 shutdown_requested = True
+                 # Attempt final error display after loop breaks
+                 break # Exit loop
 
-            # Optional small sleep if getch timeout is very short or not used
-            # time.sleep(0.05) # e.g., 50ms sleep
+        logger.info("Exited main application loop.")
 
-    # Handle expected shutdown conditions outside the main loop
+    # --- General Exception Handling for main_curses ---
     except KeyboardInterrupt:
-        # This might still happen if signal handler doesn't catch it fast enough
         if not shutdown_requested:
-             logger.warning("KeyboardInterrupt (Ctrl+C) caught directly. Initiating shutdown...")
+             logger.warning("KeyboardInterrupt (Ctrl+C) caught outside main loop. Initiating shutdown...")
              if controller and controller.state: controller.state.add_ui_log_message("Shutdown initiated by user (Ctrl+C).")
              shutdown_requested = True
-    # Handle specific curses errors that might terminate the loop
     except curses.error as e:
-        # Handle curses errors, e.g., terminal too small during resize or init
-        logger.critical(f"Critical Curses error in main loop: {e}", exc_info=True)
-        # curses already ended by wrapper, print to stderr is the best option
+        logger.critical(f"Critical Curses error (likely during setup/initial draw): {e}", exc_info=True)
+        # Curses already ended by wrapper or never started properly
         print(f"\nFATAL CURSES ERROR: {e}. Check log '{args.log_file}'.", file=sys.stderr)
         print("Ensure terminal is large enough (min 80x20 recommended).", file=sys.stderr)
-    # Handle any other unexpected exceptions
     except Exception as e:
-        logger.critical(f"Unhandled exception in main_curses loop: {e}", exc_info=True)
-        # Log the full traceback
-        # logger.critical(traceback.format_exc()) # Redundant if exc_info=True used
+        logger.critical(f"Unhandled exception during main_curses execution: {e}", exc_info=True)
         shutdown_requested = True # Ensure shutdown sequence runs
-
-        # --- Final Error Display Attempt (Corrected isendwin check) ---
+        # --- Final Error Display Attempt (if curses was running) ---
         try:
-            # Check if curses is still active using the main stdscr object
-            if not stdscr.isendwin():
-                 color_red = curses.color_pair(3) | curses.A_BOLD # Assume pair 3=RED
-                 # Check if status_display_obj and its attributes exist before using them
+            if stdscr and not stdscr.isendwin():
+                 color_red = curses.color_pair(3) | curses.A_BOLD
                  if isinstance(status_display_obj, StatusDisplay):
                       color_red = getattr(status_display_obj, 'COLOR_RED', curses.A_NORMAL) | getattr(status_display_obj, 'ATTR_BOLD', curses.A_NORMAL)
 
                  stdscr.clear()
                  err_msg = f"FATAL ERROR: {e}. Check log. Press key."
-                 # Truncate error message if too long for the first line
                  max_x = stdscr.getmaxyx()[1]
                  stdscr.addstr(0, 0, err_msg[:max_x-1], color_red)
                  stdscr.refresh()
-                 stdscr.nodelay(False) # Blocking getch
-                 stdscr.getch() # Wait for user
+                 stdscr.nodelay(False)
+                 stdscr.getch()
             else:
-                 # Curses already ended, print to stderr
                  print(f"\nFATAL ERROR (curses inactive): {e}. Check log '{args.log_file}'.", file=sys.stderr)
-        except AttributeError as ae:
-             # Catch the specific error from the log: 'isendwin' on the wrong object (should be fixed now)
-             # or other potential AttributeErrors during this final display attempt.
-             logger.error(f"AttributeError during final error display: {ae}")
-             # Log type of stdscr for debugging
-             try: logger.error(f"Object causing error: {type(stdscr)}")
-             except: pass
-             print(f"\nFATAL ERROR: {e}. Check log '{args.log_file}'. (Display failed: {ae})", file=sys.stderr)
         except Exception as display_err:
             logger.error(f"Failed to display final error in curses: {display_err}")
             print(f"\nFATAL ERROR: {e}. Check log '{args.log_file}'. (Display failed)", file=sys.stderr)
         # --- End Final Error Display ---
 
+    # --- Finally block for guaranteed cleanup ---
     finally:
-        logger.info("Exiting main_curses function, stopping controller...")
+        logger.info("Entering main_curses finally block for cleanup...")
         if controller:
-             # Check if stop method exists before calling
-             if hasattr(controller, 'stop') and callable(controller.stop):
-                  controller.stop() # Ensure controller cleanup happens
-             else:
-                  logger.error("Controller object missing 'stop' method!")
-        logger.info("Controller stop sequence initiated.")
-
+            logger.info("Stopping RtkController...")
+            try:
+                controller.stop() # Ensure controller cleanup happens
+                logger.info("RtkController stop sequence initiated.")
+            except Exception as stop_err:
+                 logger.error(f"Exception during RtkController stop: {stop_err}", exc_info=True)
+        else:
+             logger.warning("Controller object was not created or available for stopping.")
+        # Curses cleanup is handled by the wrapper
+        logger.info("Exiting main_curses function.")
+# *** MODIFICATION END: Enhanced main_curses ***
 
 if __name__ == "__main__":
     # Parse arguments first
@@ -241,28 +223,26 @@ if __name__ == "__main__":
     # --- Setup File Logging ---
     log_level = logging.DEBUG if args.debug else logging.INFO
     log_formatter = logging.Formatter(LOG_FORMAT)
-    log_filename = args.log_file or DEFAULT_LOG_FILENAME # Use default if not provided
+    log_filename = args.log_file or DEFAULT_LOG_FILENAME
     try:
-        # Configure root logger
         root_logger = logging.getLogger()
-        # Remove potential default handlers if basicConfig was called elsewhere
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
-        root_logger.setLevel(logging.DEBUG) # Set root logger to lowest level
+        root_logger.setLevel(logging.DEBUG) # Log everything to root
 
-        # File Handler (logs DEBUG and above)
-        file_handler = logging.FileHandler(log_filename, mode='w') # Overwrite log each run
+        # File Handler
+        file_handler = logging.FileHandler(log_filename, mode='w')
         file_handler.setFormatter(log_formatter)
-        file_handler.setLevel(logging.DEBUG) # Log everything to file
+        file_handler.setLevel(logging.DEBUG) # Log all levels to file
         root_logger.addHandler(file_handler)
 
-        # Console handler for messages *before* curses starts or *after* it ends
-        # Only logs INFO and above unless debug is set
-        console_handler = logging.StreamHandler(sys.stderr) # Log to stderr
+        # Console handler (for pre/post curses)
+        console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setFormatter(log_formatter)
-        console_handler.setLevel(log_level) # Set level based on args.debug
+        console_handler.setLevel(log_level) # Controlled by --debug
         root_logger.addHandler(console_handler)
 
+        # Initial log messages *before* curses starts
         logger.info(f"File logging setup ({log_filename}) at level DEBUG")
         logger.info(f"Console logging setup at level {logging.getLevelName(log_level)}")
         if args.debug: logger.debug("Debug logging is ON.")
@@ -270,37 +250,46 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error setting up logging ({log_filename}): {e}", file=sys.stderr)
         sys.exit(1)
-    # --- End Logging Setup ---
 
     # --- Setup Signal Handlers ---
-    signal.signal(signal.SIGINT, signal_handler) # Handle Ctrl+C
-    signal.signal(signal.SIGTERM, signal_handler) # Handle termination signal
-    logger.debug("Signal handlers registered.")
-    # --- End Signal Handlers ---
+    try:
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        logger.debug("Signal handlers registered.")
+    except Exception as e:
+        logger.error(f"Failed to register signal handlers: {e}", exc_info=True)
+        # Continue execution, but Ctrl+C might not work gracefully
 
-
-    # Run the main application within the curses wrapper
+    # --- Run the main application within the curses wrapper ---
     exit_code = 0
     try:
-        # Pass parsed args to the main function run by the wrapper
+        # *** MODIFICATION START: Logging around wrapper ***
+        logger.info("Attempting to start curses.wrapper...")
         curses.wrapper(main_curses, args)
-        # Check shutdown_requested flag to determine if exit was normal or forced
+        logger.info("curses.wrapper finished.")
+        # *** MODIFICATION END ***
+
+        # Check shutdown reason
         if shutdown_requested:
              print(f"\nApplication shut down due to signal or error. Log file: {log_filename}")
+             logger.warning("Application shut down due to signal or error.")
         else:
              print(f"\nApplication finished normally. Log file: {log_filename}")
+             logger.info("Application finished normally.")
     except curses.error as e:
-        # Handle errors during curses initialization (e.g., unsupported terminal)
+        # Handle errors during curses *initialization* by the wrapper itself
         print(f"\nCurses initialization failed: {e}", file=sys.stderr)
-        print("Ensure your terminal supports curses (e.g., not basic Windows cmd, use WSL, Linux terminal, macOS terminal) and is large enough (min 80x20 recommended).", file=sys.stderr)
+        print("Ensure terminal supports curses and is large enough.", file=sys.stderr)
+        # Log the error AFTER wrapper fails
+        logger.critical(f"curses.wrapper failed to initialize: {e}", exc_info=True)
         exit_code = 1
     except Exception as e:
-        # Catch any other unexpected errors during setup or wrapper execution
-        print(f"\nAn unexpected error occurred before or during curses wrapper execution: {e}", file=sys.stderr)
-        logger.critical(f"Unhandled exception preventing curses wrapper: {e}", exc_info=True)
+        # Catch unexpected errors during wrapper setup/teardown
+        print(f"\nAn unexpected error occurred outside main_curses: {e}", file=sys.stderr)
+        logger.critical(f"Unhandled exception OUTSIDE main_curses: {e}", exc_info=True)
         print(f"Check log file '{log_filename}' for details.", file=sys.stderr)
         exit_code = 1
     finally:
-        logger.info("Application exiting.")
-        logging.shutdown() # Ensure logs are flushed before exiting
-        sys.exit(exit_code) # Exit with appropriate code
+        logger.info("Application final exit sequence.")
+        logging.shutdown() # Ensure logs are flushed
+        sys.exit(exit_code)
