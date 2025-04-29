@@ -26,6 +26,9 @@ NTRIP_DATA_TIMEOUT = 60.0 # seconds - reconnect if no data received
 SERIAL_TIMEOUT = 1.0 # seconds for serial read/write
 STATUS_UPDATE_INTERVAL = 1.0 # seconds for UI refresh
 
+# --- NTRIP Retry Limit ---
+MAX_NTRIP_RETRIES = 5  # Stop trying after this many consecutive failures
+
 # --- NMEA Fix Quality Indicators ---
 FIX_QUALITY_INVALID = 0
 FIX_QUALITY_GPS = 1
@@ -35,7 +38,12 @@ FIX_QUALITY_RTK_FIXED = 4
 FIX_QUALITY_RTK_FLOAT = 5
 FIX_QUALITY_ESTIMATED = 6
 
+# Define SNR thresholds used elsewhere
+SNR_THRESHOLD_GOOD = 35
+SNR_THRESHOLD_BAD = 20
+
 # --- RTCM3 Message Types ---
+# (Keep existing definitions)
 RTCM_MSG_TYPE_GPS_MSM7 = 1077
 RTCM_MSG_TYPE_GLONASS_MSM7 = 1087
 RTCM_MSG_TYPE_GALILEO_MSM7 = 1097
@@ -44,7 +52,6 @@ RTCM_MSG_TYPE_QZSS_MSM7 = 1117
 RTCM_MSG_TYPE_ARP_1005 = 1005
 RTCM_MSG_TYPE_ARP_1006 = 1006 # Alternative with height
 
-# Important RTCM types to check for RTK operation
 IMPORTANT_RTCM_TYPES: Dict[int, str] = {
     RTCM_MSG_TYPE_GPS_MSM7: "GPS MSM7 (1077)",
     RTCM_MSG_TYPE_GLONASS_MSM7: "GLONASS MSM7 (1087)",
@@ -53,7 +60,8 @@ IMPORTANT_RTCM_TYPES: Dict[int, str] = {
     RTCM_MSG_TYPE_ARP_1005: "ARP (1005/1006)", # Base station position
 }
 
+
 # --- Logging ---
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 DEFAULT_LOG_FILENAME = "rtk_client.log"
-MAX_LOG_MESSAGES = 10 # Max messages in UI buffer
+MAX_LOG_MESSAGES = 100 # Increased UI log buffer size slightly
