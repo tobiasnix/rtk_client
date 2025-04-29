@@ -50,7 +50,8 @@ class GnssState:
         self.ntrip_data_rates: deque = deque(maxlen=60)
         self.last_rtcm_data_received: Optional[bytes] = None
         self.ntrip_status_message: str = "Not connected"
-        self.ntrip_connection_gave_up: bool = False # <-- New state variable
+        self.ntrip_connection_gave_up: bool = False
+        self.ntrip_next_reconnect_time: Optional[datetime] = None # <<< Initialized
         # Diagnostics
         self.gps_error_count: int = 0
         self.ntrip_error_count: int = 0
@@ -65,23 +66,65 @@ class GnssState:
                 if hasattr(self, key):
                     setattr(self, key, value)
                 else:
+                    # This warning is now less likely for ntrip_next_reconnect_time
                     logger.warning(f"Attempted to update non-existent state variable: {key}")
 
     def get_state_snapshot(self) -> Dict[str, Any]:
         """Return a copy of the current state in a thread-safe manner."""
         with self._lock:
             # Shallow copy is usually sufficient for display purposes
-            # If deeper mutation is a risk, use copy.deepcopy
             return self.__dict__.copy() # Copy the instance dictionary
 
     def add_ui_log_message(self, message: str):
-        """Adds a message to the UI log buffer."""
+        """Adds a message to the UI log buffer with extreme formatting to prevent display issues."""
         with self._lock:
             timestamp = datetime.now().strftime("%H:%M:%S")
-            self.ui_log_messages.append(f"[{timestamp}] {message}")
-            # Also log important UI messages to main log file
-            logger.info(f"UI_LOG: {message}")
 
+            # Define a safe maximum message length that won't disturb the display
+            # Adjusted based on typical panel width, leaving room for borders/padding
+            MAX_MSG_LENGTH = 70 # Slightly increased but still conservative
+
+            # Process message based on content for optimal display
+            processed_message = message
+
+            # Special handling for common message types (remains the same)
+            if "ERROR - NTRIP connection timed out" in message:
+                processed_message = "NTRIP: Connection timeout"
+            elif "INFO - NTRIP socket closed" in message:
+                processed_message = "NTRIP: Socket closed"
+            elif "INFO - NTRIP connection failed" in message:
+                if "Retrying" in message and "/5)" in message:
+                    retry_num = message.split("(")[1].split("/")[0] if "(" in message else "?"
+                    processed_message = f"NTRIP: Conn failed ({retry_num}/5)"
+                else:
+                    processed_message = "NTRIP: Connection failed"
+            elif "INFO - Connecting to" in message:
+                processed_message = "NTRIP: Connecting..."
+            elif "NTRIP: Retry" in message:
+                parts = message.split("Retry")
+                if len(parts) > 1:
+                    retry_info = parts[1].strip().split(" ")[0]
+                    processed_message = f"NTRIP: Retry {retry_info}"
+                else:
+                    processed_message = "NTRIP: Retrying..."
+            elif "Bad file descriptor" in message:
+                 processed_message = "NTRIP: Socket Error (Shutdown)"
+            elif "did not exit cleanly" in message:
+                 processed_message = "NTRIP: Thread Shutdown Issue"
+
+            # Combine timestamp and processed message
+            full_ui_msg = f"[{timestamp}] {processed_message}"
+
+            # Ensure the *final combined* message is truncated to safe length for the UI panel
+            if len(full_ui_msg) > MAX_MSG_LENGTH:
+                full_ui_msg = full_ui_msg[:MAX_MSG_LENGTH-3] + "..." # Truncate combined message
+
+            # Add formatted and truncated message to the buffer
+            self.ui_log_messages.append(full_ui_msg)
+
+            # Still log the original, full message to the file logger for complete details
+            # Avoid logging the potentially truncated 'UI_LOG' prefix version here
+            # logger.info(f"UI_LOG: {message}") # Keep original logging behavior if desired elsewhere
 
     def increment_error_count(self, error_type: str) -> None:
         """Increment error counters safely and log to UI."""
@@ -96,8 +139,11 @@ class GnssState:
             else:
                  logger.warning(f"Unknown error type for increment: {error_type}")
                  return
-            # Don't add to UI log here, let the calling code decide based on context
-            logger.warning(message) # Log errors as warnings
+            # Log the error count increase as a warning
+            logger.warning(message)
+            # Add a simplified message to the UI log
+            self.add_ui_log_message(message)
+
 
     def increment_ntrip_reconnects(self) -> int:
         """Increments the reconnect counter and returns the new value."""
@@ -120,11 +166,12 @@ class GnssState:
                  log_msg = f"NTRIP connection attempts {'ceased' if status else 'resumed'}."
                  if message: log_msg += f" Reason: {message}"
                  logger.warning(log_msg)
+                 # Use add_ui_log_message for consistent formatting/truncation
                  self.add_ui_log_message(log_msg)
                  if status and message: # Update status message only when giving up
                       self.ntrip_status_message = message
 
-    def set_ntrip_connected(self, status: bool, message: str = "", log_to_ui: bool = True) -> None: # Hinzugefügter Parameter log_to_ui
+    def set_ntrip_connected(self, status: bool, message: str = "", log_to_ui: bool = True) -> None:
         """Updates NTRIP connection status and related state."""
         with self._lock:
              changed = (self.ntrip_connected != status)
@@ -138,11 +185,11 @@ class GnssState:
                      # Reset counters on successful connection transition
                      self.reset_ntrip_reconnects()
                      # Reset gave up flag if we reconnected
-                     self.set_ntrip_gave_up(False) # Implicitly logs resume
-                     # Immer zur UI loggen bei Erfolg
+                     # Use internal method which handles logging/UI message
+                     self.set_ntrip_gave_up(False)
+                     # Always log to UI on successful connection change
                      self.add_ui_log_message("NTRIP Connected.")
-             elif changed and log_to_ui: # Nur zur UI loggen, wenn changed UND log_to_ui True ist
+             elif changed and log_to_ui:
                   # Just disconnected
+                  # Use add_ui_log_message for consistent formatting/truncation
                   self.add_ui_log_message(f"NTRIP Disconnected: {message}")
-                  # Do not reset gave_up flag here
-

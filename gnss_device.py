@@ -24,15 +24,22 @@ class GnssDevice:
             return True
         try:
             logger.debug(f"Attempting to connect to {self._port_name} at {self._baudrate} baud...")
-            self._serial_port = serial.Serial(self._port_name, self._baudrate, timeout=SERIAL_TIMEOUT)
-            # Check if port opened successfully
+            # Set write_timeout to match read timeout for consistency
+            self._serial_port = serial.Serial(
+                self._port_name,
+                self._baudrate,
+                timeout=SERIAL_TIMEOUT,
+                write_timeout=SERIAL_TIMEOUT
+            )
             if self._serial_port.is_open:
                  logger.info(f"Connected to GNSS device on {self._port_name} at {self._baudrate} baud")
+                 # Clear buffers upon successful connection
+                 self._serial_port.reset_input_buffer()
+                 self._serial_port.reset_output_buffer()
                  self._state.add_ui_log_message(f"Serial connected: {self._port_name}")
                  return True
             else:
-                 # This case might be less common with pyserial, exceptions usually raised
-                 logger.error(f"Serial port {self._port_name} failed to open.")
+                 logger.error(f"Serial port {self._port_name} failed to open but no exception.")
                  self._state.add_ui_log_message(f"Serial Error: Failed to open {self._port_name}")
                  self._serial_port = None
                  return False
@@ -41,7 +48,7 @@ class GnssDevice:
             self._state.add_ui_log_message(f"Serial Error: {e}")
             self._serial_port = None
             return False
-        except Exception as e: # Catch other potential errors like permission issues
+        except Exception as e:
             logger.error(f"Unexpected error connecting to serial port {self._port_name}: {e}", exc_info=True)
             self._state.add_ui_log_message(f"Serial Conn. Error: {e}")
             self._serial_port = None
@@ -55,28 +62,26 @@ class GnssDevice:
     def _calculate_checksum(sentence: str) -> str:
         """Calculates the NMEA checksum for a sentence (excluding $ and *)."""
         checksum = 0
-        # Strip leading $ if present
         if sentence.startswith('$'):
             sentence = sentence[1:]
-        # Remove existing checksum if present
         if '*' in sentence:
             sentence = sentence.split('*')[0]
-
-        # Calculate checksum
         for char in sentence:
             checksum ^= ord(char)
-        return f"{checksum:02X}" # Return as 2-digit uppercase hex
+        return f"{checksum:02X}"
 
-    def send_command(self, command: str) -> Optional[str]:
-        """Sends a command to the GNSS module and waits for a response."""
+    def send_command(self, command: str, expect_ack: bool = True) -> Optional[str]:
+        """Sends a command to the GNSS module and waits for a response.
+           expect_ack: If True, expects a standard $PAIR001 ACK."""
         if not self.is_connected():
             logger.error("Cannot send command: Serial port not connected.")
             return None
 
-        # Ensure command format ($COMMAND*CS)
+        original_command_name = command.split(',')[0] # For logging
+
         if not command.startswith('$'):
             command = '$' + command
-        if '*' in command: # Remove existing checksum if user included it
+        if '*' in command:
             command = command.split('*')[0]
 
         checksum = self._calculate_checksum(command)
@@ -84,74 +89,92 @@ class GnssDevice:
 
         try:
             start_time = time.monotonic()
-            # Ensure buffers are clear before sending/receiving
-            self._serial_port.reset_input_buffer()
-            self._serial_port.reset_output_buffer()
+            # Lock could be added here if multiple threads might send commands
+            # with self._state._lock: # Example if needed
+            self._serial_port.reset_output_buffer() # Clear output buffer first
+            self._serial_port.reset_input_buffer()  # <<< Clear input buffer BEFORE sending
 
             bytes_written = self._serial_port.write(full_command.encode('ascii'))
-            self._serial_port.flush() # Ensure data is sent
+            self._serial_port.flush() # Ensure data is sent immediately
             logger.debug(f"Sent command ({bytes_written} bytes): {full_command.strip()}")
 
             # Read the response line
             response_bytes = self._serial_port.readline()
             end_time = time.monotonic()
-            self._state.update(last_command_response_time_sec=(end_time - start_time))
+            response_time = end_time - start_time
+            self._state.update(last_command_response_time_sec=response_time)
 
             response = response_bytes.decode('ascii', errors='ignore').strip()
-            logger.debug(f"Received response: {response}")
-            return response
+            logger.debug(f"Received response for {original_command_name}: {response} (in {response_time:.3f}s)")
+
+            # Optional: Add check for ACK if expected
+            if expect_ack:
+                 ack_prefix = f"$PAIR001,{original_command_name[4:]},0" # Assumes command is $PAIRxxxx
+                 if response and response.startswith(ack_prefix):
+                     logger.debug(f"Command {original_command_name} acknowledged successfully.")
+                 elif response:
+                     logger.warning(f"Command {original_command_name} received non-ACK response: {response}")
+                     # Treat non-ACK as failure for ACK-expecting commands
+                     # return None # Or return the response and let caller decide
+                 else:
+                     logger.warning(f"No response received for expected ACK to {original_command_name}")
+                     # return None
+
+            return response # Return whatever was received
+
         except serial.SerialTimeoutException:
-            logger.warning(f"Timeout waiting for response to command: {command.split(',')[0]}") # Log only command name
-            self._state.update(last_command_response_time_sec=None) # Indicate timeout
+            logger.warning(f"Timeout waiting for response to command: {original_command_name}")
+            self._state.update(last_command_response_time_sec=None)
             return None
         except serial.SerialException as e:
-            logger.error(f"Serial error during command '{command.split(',')[0]}': {e}")
+            logger.error(f"Serial error during command '{original_command_name}': {e}")
             self._state.increment_error_count("gps")
-            self.close() # Close port on serial error
+            self.close()
             return None
         except Exception as e:
-            logger.error(f"Unexpected error sending command '{command.split(',')[0]}': {e}", exc_info=True)
+            logger.error(f"Unexpected error sending command '{original_command_name}': {e}", exc_info=True)
             self._state.increment_error_count("gps")
-            self._state.update(last_command_response_time_sec=None) # Indicate error
+            self._state.update(last_command_response_time_sec=None)
             return None
 
     def read_line(self) -> Optional[str]:
         """Reads a line from the serial port, non-blocking."""
         if not self.is_connected():
-            # logger.warning("Attempted to read line, but not connected.")
-            return None # Return None to indicate closed port
+            return None
 
         try:
-            # Check if there's data waiting to avoid blocking indefinitely if timeout is long/None
+            # Check waiting bytes first
             if self._serial_port.in_waiting > 0:
                 line_bytes = self._serial_port.readline()
-                # readline with timeout might return empty bytes on timeout
                 if not line_bytes:
-                    # logger.debug("Readline returned empty bytes (timeout?).")
-                    return "" # Indicate timeout/no complete line received yet
-                # Decode received bytes
+                    return "" # Timeout occurred while reading
                 try:
                      line = line_bytes.decode('ascii', errors='ignore').strip()
-                     # logger.debug(f"Read line: {line}") # Very verbose
+                     # Very verbose logging - disable unless debugging specific NMEA issues
+                     # logger.debug(f"Read line: {line}")
                      return line
                 except UnicodeDecodeError as e:
                      logger.warning(f"Failed to decode received bytes: {line_bytes[:50]}... Error: {e}")
                      return "" # Return empty on decode error
             else:
-                # logger.debug("No data waiting in serial buffer.")
                 return "" # No data available right now
         except serial.SerialException as e:
-            # Handle potential port closure or other serial errors during read
             logger.error(f"Serial error reading line: {e}")
             self._state.increment_error_count("gps")
-            self.close() # Close the port if a serial error occurs
-            return None # Indicate closed port/error state
+            self.close()
+            return None
+        except OSError as e:
+             # Catch OS-level errors (e.g., device disconnected)
+             logger.error(f"OS error reading line: {e}")
+             self._state.increment_error_count("gps")
+             self.close()
+             return None
         except Exception as e:
             logger.error(f"Unexpected error reading line: {e}", exc_info=True)
             self._state.increment_error_count("gps")
-            # Decide whether to close port on unexpected errors too
+            # Close might be too aggressive here, depends on the error
             # self.close()
-            return None # Indicate error state
+            return None
 
     def write_data(self, data: bytes) -> Optional[int]:
         """Writes raw bytes to the serial port (e.g., RTCM data)."""
@@ -159,53 +182,58 @@ class GnssDevice:
             logger.error("Cannot write data: Serial port not connected.")
             return None
         try:
+             # Add check for zero bytes to prevent unnecessary write calls
+             if not data:
+                 return 0
              bytes_written = self._serial_port.write(data)
-             # logger.debug(f"Wrote {bytes_written} bytes to serial.")
+             # Consider adding flush if immediate sending is critical,
+             # though write() often handles buffering internally.
+             # self._serial_port.flush()
              return bytes_written
         except serial.SerialTimeoutException:
-             # Write timeouts are less common unless flow control is involved
              logger.warning("Serial write timeout occurred.")
              self._state.increment_error_count("gps")
-             return 0 # Indicate zero bytes written on timeout
+             return 0
         except serial.SerialException as e:
             logger.error(f"Serial error writing data: {e}")
             self._state.increment_error_count("gps")
-            self.close() # Close port on serial error
-            return None # Indicate error
+            self.close()
+            return None
+        except OSError as e:
+             logger.error(f"OS error writing data: {e}")
+             self._state.increment_error_count("gps")
+             self.close()
+             return None
         except Exception as e:
              logger.error(f"Unexpected error writing data: {e}", exc_info=True)
              self._state.increment_error_count("gps")
-             return None # Indicate error
+             return None
 
-    def configure_module(self) -> None:
-        """Sends configuration commands to the LC29H(DA) module."""
+    def configure_module(self) -> bool:
+        """Sends configuration commands to the LC29H(DA) module. Returns True if all expected ACKs received."""
         logger.info("Configuring LC29H (DA) module...")
         self._state.add_ui_log_message("Configuring GNSS module...")
-        time.sleep(0.5) # Short delay after connect before sending commands
+        time.sleep(0.5) # Delay before starting config
 
         # --- Get Firmware Version ---
-        version_response = self.send_command("PQTMVERNO")
-        fw_version = "Unknown" # Default
+        # Use expect_ack=False as firmware response is not a standard ACK
+        version_response = self.send_command("PQTMVERNO", expect_ack=False)
+        fw_version = "Unknown"
         if version_response:
             try:
-                # Check for the expected format first
                 if version_response.startswith("$PQTMVERNO,"):
                     parts = version_response.split(',')
-                    if len(parts) > 1:
-                        fw_version = parts[1] # Extract version string
+                    # Added check for sufficient parts
+                    if len(parts) >= 2 and parts[1]:
+                        fw_version = parts[1]
                         logger.info(f"Detected Firmware (parsed): {fw_version}")
                     else:
-                         logger.warning(f"Could not split firmware response: {version_response}")
+                         logger.warning(f"Could not split firmware response correctly: {version_response}")
                          fw_version = "Parse Error (Split)"
-                # Handle the specific unexpected format seen in logs
-                elif version_response == "2*01": # Example of handling specific odd response
-                     logger.warning(f"Received known unexpected firmware response: {version_response}. Cannot parse version.")
-                     fw_version = "Unexpected (2*01)"
                 elif "ERROR" in version_response.upper():
                     logger.warning(f"Firmware query returned error: {version_response}")
                     fw_version = "Query Error"
                 else:
-                    # Log other unexpected formats
                     logger.warning(f"Unexpected firmware response format: {version_response}")
                     fw_version = "Parse Error (Format)"
             except Exception as e:
@@ -215,62 +243,73 @@ class GnssDevice:
             logger.warning("No response received for firmware query.")
             fw_version = "No Response"
 
-        # Update state with determined firmware version
         self._state.update(firmware_version=fw_version)
-        if fw_version != "Unknown":
+        if fw_version not in ["Unknown", "No Response"]:
             self._state.add_ui_log_message(f"Firmware: {fw_version}")
 
         # --- Send Configuration Commands ---
-        # Commands based on previous logic and V1.4 spec check for DA
-        # PAIR062,type,rate: Output NMEA sentence rate (0=GGA, 2=GSA, 3=GSV, 4=RMC, 5=VTG). Rate 1 = 1Hz.
-        # PAIR436,1: Enable RTCM input passthrough? (Not explicitly in spec V1.4) - Assume enables RTCM input
-        # PAIR513: Enable RTK mode? (Not explicitly in spec V1.4) - Assume enables RTK
         commands = [
-            "PAIR062,0,1", # Output GGA at 1Hz
-            "PAIR062,4,1", # Output RMC at 1Hz
-            "PAIR062,2,1", # Output GSA at 1Hz
-            "PAIR062,3,1", # Output GSV at 1Hz
-            "PAIR062,5,1", # Output VTG at 1Hz (Optional, disable if not needed)
-            "PAIR436,1",   # Enable RTCM input (Assumption)
-            "PAIR513",     # Enable RTK mode (Assumption)
+            {"cmd": "PAIR062,0,1", "ack": True},  # GGA 1Hz
+            {"cmd": "PAIR062,4,1", "ack": True},  # RMC 1Hz
+            {"cmd": "PAIR062,2,1", "ack": True},  # GSA 1Hz - This one failed in the log
+            {"cmd": "PAIR062,3,1", "ack": True},  # GSV 1Hz
+            {"cmd": "PAIR062,5,1", "ack": True},  # VTG 1Hz
+            {"cmd": "PAIR436,1",   "ack": True},  # Enable RTCM input?
+            {"cmd": "PAIR513",     "ack": True},  # Enable RTK mode?
         ]
         logger.info(f"Sending {len(commands)} configuration commands...")
         success_count = 0
-        for cmd in commands:
-            response = self.send_command(cmd)
-            # Basic check for acknowledgement (PAIR001,cmd_id,status - 0=success)
-            if response and response.startswith(f"$PAIR001,{cmd.split(',')[0][4:]},0"):
-                logger.debug(f"Command {cmd} acknowledged successfully.")
-                success_count += 1
-            elif response:
-                 logger.warning(f"Command {cmd} returned unexpected response: {response}")
-            else:
-                 logger.warning(f"No response received for command {cmd}")
-            time.sleep(0.15) # Small delay between commands
+        total_sent = 0
 
-        if success_count == len(commands):
-             logger.info("All module configuration commands sent and acknowledged.")
-             self._state.add_ui_log_message("Module configuration sent (Ack).")
-        else:
-             logger.warning(f"Module configuration commands sent, but only {success_count}/{len(commands)} were acknowledged successfully.")
-             self._state.add_ui_log_message(f"Module config sent ({success_count}/{len(commands)} Ack).")
+        for item in commands:
+            cmd_str = item["cmd"]
+            expect_ack = item["ack"]
+            command_name = cmd_str.split(',')[0] # For logging
+
+            # Pass expect_ack to send_command
+            response = self.send_command(cmd_str, expect_ack=expect_ack)
+            total_sent += 1
+
+            # Check response based on whether ACK was expected
+            if expect_ack:
+                ack_prefix = f"$PAIR001,{command_name[4:]},0"
+                if response and response.startswith(ack_prefix):
+                    success_count += 1
+                    # Success already logged in send_command if debug level is high enough
+                else:
+                    # Failure/unexpected response already logged by send_command
+                    logger.error(f"Configuration command {command_name} failed or received unexpected response.")
+            elif response: # If ACK wasn't expected, just receiving anything might be okay
+                success_count += 1 # Count non-ACK commands as success if they get *any* response
+            else: # No response at all is usually bad
+                 logger.error(f"Configuration command {command_name} (no ACK expected) received no response.")
+
+            time.sleep(0.15) # Delay between commands
+
+        config_success = (success_count == total_sent)
+        log_func = logger.info if config_success else logger.warning
+        log_func(f"Module configuration complete. {success_count}/{total_sent} commands acknowledged/responded as expected.")
+        self._state.add_ui_log_message(f"Module config sent ({success_count}/{total_sent} Ack).")
+        return config_success
 
 
     def close(self) -> None:
         """Closes the serial connection."""
         if self._serial_port and self._serial_port.is_open:
-            port_name = self._port_name # Store before closing
+            port_name = self._port_name
             try:
+                # Ensure buffers are cleared before closing to avoid issues
+                self._serial_port.reset_input_buffer()
+                self._serial_port.reset_output_buffer()
                 self._serial_port.close()
                 logger.info(f"Serial port {port_name} closed.")
             except Exception as e:
                 logger.error(f"Error closing serial port {port_name}: {e}")
             finally:
-                # Ensure state reflects closure regardless of exceptions
                 self._serial_port = None
                 self._state.add_ui_log_message(f"Serial disconnected: {port_name}")
         elif self._serial_port is None:
              logger.debug("Close called, but serial port was already None.")
-        else: # Port object exists but is not open
+        else:
              logger.debug(f"Close called, but serial port {self._port_name} was already closed.")
-             self._serial_port = None # Ensure it's set to None
+             self._serial_port = None

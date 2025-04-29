@@ -23,45 +23,70 @@ class NmeaParser:
         self._current_gsv_sequence_sats = {}
         self._current_gsv_systems = Counter()
 
-    def parse(self, sentence: str) -> None:
-        """Parses a single NMEA sentence."""
-        if not sentence or not sentence.startswith('$'):
-             # logger.debug(f"Ignoring non-NMEA line: {sentence[:50]}...") # Optional: Log ignored lines
-             return
+    def _parse_gsa(self, msg: pynmea2.types.talker.GSA) -> None:
+        """Parses GSA message with improved PRN handling."""
+        # Nur bei GSA v2.x Meldungen
+        prn_logging_enabled = False  # Flag, um Logging dieser häufigen Meldungen zu kontrollieren
+        
+        active_sat_keys = set()
+        talker = msg.talker # e.g., 'GP', 'GL', 'GA', 'GN'
+        # Caching der Satelliten für schnelleren Zugriff
+        current_sats = self._state.satellites_info.copy() if hasattr(self._state, 'satellites_info') else {}
+        
+        # PRNs nach Talker-Typ gruppieren für bessere Zuordnung
+        prn_to_key_map = {}
+        for key, sat_info in current_sats.items():
+            prn = sat_info.get('prn')
+            if prn:
+                prn_to_key_map[prn] = key
 
-        try:
-            # Attempt to parse the sentence
-            msg = pynmea2.parse(sentence)
+        # Iterate through the 12 possible satellite ID fields
+        for i in range(1, 13):
+            sat_id_field = f'sv_id{i:02}' # Field names are sv_id01, sv_id02, ...
+            if hasattr(msg, sat_id_field):
+                prn = getattr(msg, sat_id_field)
+                if not prn:
+                    continue  # Skip empty PRNs
 
-            # Increment epoch counter for every successfully parsed sentence
-            # Consider moving this inside specific message handlers if needed
-            current_epochs = self._state.get_state_snapshot()['epochs_since_start']
-            self._state.update(epochs_since_start=current_epochs + 1)
+                # Extended handling for 'GN' talker (multiple constellations)
+                if talker == 'GN':
+                    # Lookup in our cached map first (faster than iteration)
+                    if prn in prn_to_key_map:
+                        active_sat_keys.add(prn_to_key_map[prn])
+                    else:
+                        # Only log in debug mode or reduced frequency to avoid log spam
+                        if prn_logging_enabled:
+                            logger.debug(f"GNGSA referenced PRN {prn}, but it was not found in current GSV info.")
+                else:
+                    # For specific talkers (GP, GL, etc.), the key is straightforward
+                    sat_key = f"{talker}-{prn}"
+                    active_sat_keys.add(sat_key)
 
-            # Dispatch to specific handlers based on message type
-            if isinstance(msg, pynmea2.types.talker.GGA):
-                self._parse_gga(msg)
-            elif isinstance(msg, pynmea2.types.talker.GSV):
-                self._parse_gsv(msg)
-            elif isinstance(msg, pynmea2.types.talker.GSA):
-                self._parse_gsa(msg)
-            # Add elif blocks for other message types if needed
-            # elif isinstance(msg, pynmea2.types.talker.RMC): self._parse_rmc(msg)
-            # elif isinstance(msg, pynmea2.types.talker.VTG): self._parse_vtg(msg)
-            # else: logger.debug(f"Unhandled NMEA message type: {type(msg)}") # Log unhandled types
+        # Update the satellites efficiently
+        updated_count = 0
+        deactivated_count = 0
 
-        except pynmea2.ParseError as e:
-            # Log parsing errors (e.g., checksum mismatch, format issues) at debug level
-            logger.debug(f"Failed to parse NMEA sentence: {sentence} - Error: {e}")
-        except AttributeError as e:
-            # Catch AttributeErrors specifically if methods are potentially missing during development
-             logger.error(f"Error processing NMEA sentence (likely missing parser method or field): {sentence} - Error: {e}", exc_info=True)
-             self._state.increment_error_count("gps") # Increment error count for internal errors
-        except Exception as e:
-            # General exception handler for other issues during processing
-            logger.error(f"Error processing NMEA sentence: {sentence} - Error: {e}", exc_info=True)
-            self._state.increment_error_count("gps") # Increment error count
+        # Perform updates only on satellites that might change
+        for key, sat_info in current_sats.items():
+            current_status = sat_info.get('active', False)
+            is_relevant_talker = (talker == 'GN' or key.startswith(talker + '-'))
+            
+            if not is_relevant_talker:
+                continue  # Skip satellites that shouldn't be affected by this GSA
 
+            # Set new status
+            new_status = key in active_sat_keys
+            if new_status != current_status:
+                # Only update satellites whose status has changed
+                sat_info['active'] = new_status
+                if new_status:
+                    updated_count += 1
+                else:
+                    deactivated_count += 1
+        
+        # Update the state with the modified satellite info
+        if updated_count > 0 or deactivated_count > 0:
+            self._state.update(satellites_info=current_sats)
     def _get_fix_status_string(self, fix_type: int) -> str:
         """Maps fix type integer to a status string."""
         status_map = {
