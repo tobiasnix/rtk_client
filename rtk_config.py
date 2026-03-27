@@ -22,6 +22,7 @@ class Config:
         self.default_lon: float = args.default_lon or DEFAULT_LON
         self.default_alt: float = args.default_alt or DEFAULT_ALT
         self.ntrip_tls: bool = args.ntrip_tls
+        self.gnss_module: str = args.gnss_module
         self.debug: bool = args.debug
 
         # Note: Log level setup is handled in main.py after Config is created
@@ -31,12 +32,17 @@ class Config:
 def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments."""
     parser = argparse.ArgumentParser(
-        description='LC29HDA RTK GNSS Client (Modular - Curses UI)',
+        description='RTK GNSS Client (Modular - Curses UI)',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     # Serial Port Arguments
     parser.add_argument('--port', default=DEFAULT_SERIAL_PORT, help='Serial port of GNSS receiver')
     parser.add_argument('--baud', type=int, default=DEFAULT_BAUD_RATE, help='Baud rate for serial connection')
+
+    # GNSS Module Arguments
+    module_group = parser.add_argument_group('GNSS Module')
+    module_group.add_argument('--gnss-module', default='lc29h',
+                              help='GNSS module type (lc29h, generic)')
 
     # NTRIP Arguments
     ntrip_group = parser.add_argument_group('NTRIP Caster Configuration')
