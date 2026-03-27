@@ -14,6 +14,7 @@ from position_logger import PositionLogger
 # Import required components from other modules
 from rtk_config import Config
 from rtk_state import GnssState
+from state_persistence import load_state, save_state
 
 # Note: StatusDisplay is not directly used by the controller, but by main.py
 
@@ -28,6 +29,14 @@ class RtkController:
         # Resolve module profile and propagate display name to state
         self._profile = get_profile(config.gnss_module)
         self._state.module_name = self._profile.display_name
+        # Try to restore previous state for faster recovery
+        saved = load_state()
+        if saved and saved.get("position"):
+            pos = saved["position"]
+            logger.info(f"Restored last position: {pos.get('lat')}, {pos.get('lon')}")
+            self._state.add_ui_log_message(
+                f"Restored last pos: {pos.get('lat', 0):.4f}, {pos.get('lon', 0):.4f}"
+            )
         # Initialize components, passing the state and other dependencies
         self._gnss_device = GnssDevice(config.serial_port, config.baud_rate, self._state, profile=self._profile)
         self._nmea_parser = NmeaParser(self._state)
@@ -138,6 +147,9 @@ class RtkController:
         # GNSS read thread is daemon, will exit when main thread exits,
         # but closing the device helps unblock it faster.
         self._gnss_device.close()
+
+        # Save state for faster recovery on next startup
+        save_state(self._state.get_state_snapshot())
 
         # Optional: Explicitly join non-daemon threads if they existed
 

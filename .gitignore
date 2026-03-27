@@ -1,3 +1,4 @@
 *.log
 __pycache__/
 *.pyc
+.rtk_state.json
