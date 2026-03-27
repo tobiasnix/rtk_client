@@ -12,6 +12,23 @@ from rtk_state import GnssState
 
 logger = logging.getLogger(__name__)
 
+def discover_gnss_ports() -> list:
+    """Discover available serial ports that might have GNSS devices."""
+    import serial.tools.list_ports
+    candidates = []
+    for port_info in serial.tools.list_ports.comports():
+        desc = (port_info.description or '').lower()
+        mfg = (port_info.manufacturer or '').lower()
+        # Match common GNSS manufacturers/descriptions
+        keywords = ['quectel', 'gnss', 'gps', 'u-blox', 'ublox', 'septentrio', 'nmea', 'acm', 'cp210']
+        if any(kw in desc or kw in mfg for kw in keywords):
+            candidates.append(port_info.device)
+    # If no specific match, return all ports as fallback
+    if not candidates:
+        candidates = [p.device for p in serial.tools.list_ports.comports()]
+    return candidates
+
+
 class GnssDevice:
     """Handles serial communication with the GNSS module."""
     def __init__(self, port: str, baudrate: int, state: GnssState,

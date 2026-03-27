@@ -194,3 +194,23 @@ class TestGnssDeviceWithProfile:
         state = GnssState(0.0, 0.0, 0.0)
         device = GnssDevice("/dev/ttyUSB0", 115200, state)
         assert device._profile.name == "lc29h"
+
+
+class TestDiscoverGnssPorts:
+    @patch("serial.tools.list_ports.comports")
+    def test_discover_finds_quectel(self, mock_comports):
+        from gnss_device import discover_gnss_ports
+        mock_port = MagicMock()
+        mock_port.device = "/dev/ttyACM0"
+        mock_port.description = "Quectel LC29H"
+        mock_port.manufacturer = "Quectel"
+        mock_comports.return_value = [mock_port]
+        result = discover_gnss_ports()
+        assert "/dev/ttyACM0" in result
+
+    @patch("serial.tools.list_ports.comports")
+    def test_discover_empty(self, mock_comports):
+        from gnss_device import discover_gnss_ports
+        mock_comports.return_value = []
+        result = discover_gnss_ports()
+        assert result == []
