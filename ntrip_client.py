@@ -8,9 +8,11 @@ import ssl
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Optional
 
 from gnss_device import GnssDevice
+from ntrip_connection_state import NtripConnectionState
+from rtcm_parser import extract_rtcm_message_types
 
 # Import necessary components from other modules
 from rtk_config import Config
@@ -18,59 +20,6 @@ from rtk_constants import *
 from rtk_state import GnssState
 
 logger = logging.getLogger(__name__)
-
-class NtripConnectionState:
-    """Class representing NTRIP connection state with proper state transitions."""
-
-    # Define state constants
-    DISCONNECTED = "disconnected"
-    CONNECTING = "connecting"
-    CONNECTED = "connected"
-    GAVE_UP = "gave_up"
-
-    def __init__(self):
-        self.current_state = self.DISCONNECTED
-        self.last_state_change = datetime.now(timezone.utc)
-        self.reconnect_attempts = 0
-        self.error_message = ""
-        self.status_message = "Not connected"
-
-    def set_state(self, new_state: str, message: str = "") -> bool:
-        """Changes the connection state and records the timestamp.
-        Returns True if state actually changed."""
-        state_changed = (new_state != self.current_state)
-        # Always update timestamp and message if provided or state changed
-        if state_changed or (message and message != self.status_message):
-            self.current_state = new_state
-            self.last_state_change = datetime.now(timezone.utc)
-            if message: self.status_message = message
-
-            # Reset reconnect counter on successful connection or explicit disconnect
-            if new_state == self.CONNECTED or (state_changed and new_state == self.DISCONNECTED):
-                self.reconnect_attempts = 0
-
-            return state_changed
-        return False # No state change and message didn't change
-
-    def is_connected(self) -> bool:
-        return self.current_state == self.CONNECTED
-
-    def is_disconnected(self) -> bool:
-        # Includes gave up state for simplicity in some checks
-        return self.current_state in [self.DISCONNECTED, self.GAVE_UP]
-
-    def is_connecting(self) -> bool:
-        return self.current_state == self.CONNECTING
-
-    def has_given_up(self) -> bool:
-        return self.current_state == self.GAVE_UP
-
-    def increment_reconnect_attempts(self) -> int:
-        self.reconnect_attempts += 1
-        return self.reconnect_attempts
-
-    def get_connection_age(self) -> float:
-        return (datetime.now(timezone.utc) - self.last_state_change).total_seconds()
 
 
 class NtripClient:
@@ -440,34 +389,6 @@ class NtripClient:
         logger.debug(f"[UI Bound] {message}")
 
 
-    @staticmethod
-    def _extract_rtcm_message_types(data: bytes) -> List[int]:
-        """Extracts RTCM message types from received data."""
-        types_found = []
-        i = 0
-        data_len = len(data)
-        while i < data_len - 5: # Need at least preamble + header bytes
-            # Look for RTCM3 preamble (0xD3)
-            if data[i] == 0xD3 and (data[i+1] & 0xFC) == 0: # Check reserved bits are zero
-                try:
-                    payload_length = ((data[i+1] & 0x03) << 8) | data[i+2]
-                    total_length = 3 + payload_length + 3 # Preamble+Header + Payload + CRC
-                    if i + total_length <= data_len:
-                        # Extract message type (12 bits starting at byte 3, bit 0)
-                        message_type = (data[i+3] << 4) | (data[i+4] >> 4)
-                        types_found.append(message_type)
-                        i += total_length # Move to the next potential message
-                    else:
-                        # Incomplete message at the end of the buffer
-                        logger.debug(f"Incomplete RTCM message found at index {i}. Need {total_length}, have {data_len-i}.")
-                        break # Stop parsing this chunk
-                except IndexError:
-                    logger.debug(f"IndexError parsing RTCM header at index {i}.")
-                    break # Corrupted data or index issue
-            else:
-                i += 1 # Move to the next byte if not a preamble
-        return types_found
-
     def _handle_rtcm_data(self, data: bytes) -> None:
         """Processes received RTCM data and forwards it."""
         if not data: return
@@ -475,7 +396,7 @@ class NtripClient:
         bytes_sent = self._gnss_device.write_data(data)
         if bytes_sent is not None and bytes_sent > 0:
             now = datetime.now(timezone.utc)
-            rtcm_types = self._extract_rtcm_message_types(data[:bytes_sent])
+            rtcm_types = extract_rtcm_message_types(data[:bytes_sent])
 
             # Update stats locally first
             self._stats['total_bytes_received'] += bytes_sent

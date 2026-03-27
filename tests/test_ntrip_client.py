@@ -1,5 +1,6 @@
 from gnss_device import GnssDevice
-from ntrip_client import NtripClient, NtripConnectionState
+from ntrip_connection_state import NtripConnectionState
+from rtcm_parser import extract_rtcm_message_types
 from rtk_constants import NTRIP_HEADER_SIZE_LIMIT, SNR_THRESHOLD_BAD, SNR_THRESHOLD_GOOD
 
 
@@ -49,11 +50,11 @@ class TestNtripConnectionState:
 
 class TestExtractRtcmMessageTypes:
     def test_empty_data(self):
-        result = NtripClient._extract_rtcm_message_types(b'')
+        result = extract_rtcm_message_types(b'')
         assert result == []
 
     def test_too_short_data(self):
-        result = NtripClient._extract_rtcm_message_types(b'\xD3\x00')
+        result = extract_rtcm_message_types(b'\xD3\x00')
         assert result == []
 
     def test_valid_rtcm3_message(self):
@@ -69,12 +70,12 @@ class TestExtractRtcmMessageTypes:
         header = bytes([0xD3, (length >> 8) & 0x03, length & 0xFF])
         crc = bytes([0x00, 0x00, 0x00])  # Dummy CRC
         data = header + payload + crc
-        result = NtripClient._extract_rtcm_message_types(data)
+        result = extract_rtcm_message_types(data)
         assert 1077 in result
 
     def test_no_preamble(self):
         data = bytes([0x00, 0x00, 0x04, 0x43, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00])
-        result = NtripClient._extract_rtcm_message_types(data)
+        result = extract_rtcm_message_types(data)
         assert result == []
 
 
