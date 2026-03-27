@@ -141,6 +141,9 @@ def main_curses(stdscr, args: argparse.Namespace):
                                     logger.warning("NTRIP connection reset failed (client not running?).")
                           else:
                                logger.warning("Cannot reset NTRIP: controller not available.")
+                     elif key == ord('?'):
+                          if status_display_obj:
+                               status_display_obj.show_help_overlay(stdscr)
                      else:
                           # Log other key presses if needed for debugging
                           # logger.debug(f"Key pressed: {key}")

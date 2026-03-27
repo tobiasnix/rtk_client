@@ -658,6 +658,37 @@ class StatusDisplay:
             self._logger.error(f"Unexpected error in update_display: {e}", exc_info=True)
             self.trigger_redraw()
 
+    def show_help_overlay(self, stdscr) -> None:
+        """Shows a help overlay with keyboard shortcuts."""
+        max_y, max_x = stdscr.getmaxyx()
+        # Calculate overlay dimensions
+        help_lines = [
+            "Keyboard Shortcuts",
+            "",
+            "  q  -  Quit application",
+            "  r  -  Reset NTRIP connection",
+            "  ?  -  Show this help",
+            "",
+            "Press any key to close",
+        ]
+        h = len(help_lines) + 4
+        w = max(len(line) for line in help_lines) + 6
+        y = max(0, (max_y - h) // 2)
+        x = max(0, (max_x - w) // 2)
+
+        try:
+            win = curses.newwin(h, w, y, x)
+            win.box()
+            for i, line in enumerate(help_lines):
+                self._addstr_safe(win, i + 2, 3, line, curses.A_NORMAL)
+            win.refresh()
+            stdscr.nodelay(False)
+            stdscr.getch()  # Wait for any key
+            stdscr.nodelay(True)
+            self.trigger_redraw()
+        except curses.error:
+            pass
+
     def trigger_redraw(self):
         """Request a full redraw on next update."""
         self._needs_redraw = True
