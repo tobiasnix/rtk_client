@@ -8,14 +8,19 @@ A terminal-based RTK GNSS client for real-time kinematic positioning with NTRIP 
 - NTRIP client for receiving RTCM3 correction data
 - Optional TLS/SSL encryption for NTRIP connections
 - Multi-constellation support (GPS, GLONASS, Galileo, BeiDou, QZSS)
+- Multi-module support (LC29H, generic NMEA, extensible via profiles)
 - Curses-based terminal UI with satellite tracking, SNR statistics, and live log
 - Automatic NTRIP reconnection with exponential backoff
-- Configurable via command-line arguments and environment variables
+- YAML configuration file support
+- CSV position logging
+- Serial port auto-discovery
+- State persistence across restarts
+- Configurable via config file, CLI arguments, and environment variables
 
 ## Requirements
 
 - Python 3.9+
-- Serial GNSS receiver (e.g. Quectel LC29HDA) connected via USB
+- Serial GNSS receiver (e.g. Quectel LC29HDA, u-blox, or any NMEA module) connected via USB
 - Access to an NTRIP caster for RTK corrections
 
 ## Installation
@@ -40,8 +45,9 @@ python3 rtk_client_final.py [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--gnss-module` | `lc29h` | GNSS module type (lc29h, generic) |
-| `--port` | `/dev/ttyUSB0` | Serial port of GNSS receiver |
+| `--config` | *(none)* | Path to YAML config file |
+| `--gnss-module` | `lc29h` | GNSS module type (`lc29h`, `generic`) |
+| `--port` | `/dev/ttyUSB0` | Serial port (`auto` for auto-discovery) |
 | `--baud` | `115200` | Baud rate for serial connection |
 | `--ntrip-server` | `193.137.94.71` | NTRIP caster server address |
 | `--ntrip-port` | `2101` | NTRIP caster server port |
@@ -54,19 +60,35 @@ python3 rtk_client_final.py [OPTIONS]
 | `--default-alt` | `476.68` | Fallback altitude (meters) |
 | `--log-file` | `rtk_client.log` | Log file name |
 | `--debug` | off | Enable debug level logging |
+| `--position-log` | *(none)* | Log positions to CSV file |
+| `--position-log-interval` | `5.0` | Position log interval in seconds |
 
-### Example
+### Configuration File
+
+Instead of many CLI arguments, use a YAML config file:
 
 ```bash
+python3 rtk_client_final.py --config config.yaml
+```
+
+See `config.example.yaml` for the full structure. CLI arguments override config file values.
+
+### Examples
+
+```bash
+# With environment variables
 export NTRIP_USER=myuser
 export NTRIP_PASS=mypass
+python3 rtk_client_final.py --port /dev/ttyUSB0 --ntrip-server caster.example.com
 
-python3 rtk_client_final.py \
-  --port /dev/ttyUSB0 \
-  --ntrip-server your-caster.com \
-  --ntrip-port 2101 \
-  --ntrip-mountpoint MOUNT1 \
-  --ntrip-tls
+# With config file
+python3 rtk_client_final.py --config config.yaml
+
+# Auto-discover serial port + generic NMEA module
+python3 rtk_client_final.py --port auto --gnss-module generic
+
+# With position logging
+python3 rtk_client_final.py --position-log positions.csv --position-log-interval 2.0
 ```
 
 ### Keyboard Controls
@@ -75,6 +97,7 @@ python3 rtk_client_final.py \
 |-----|--------|
 | `q` | Quit application |
 | `r` | Reset NTRIP connection |
+| `?` | Show help overlay |
 
 ## Supported Modules
 
@@ -106,27 +129,35 @@ Serial Port (GNSS Receiver)
     v
 GnssDevice --> NmeaParser --> GnssState <-- NtripClient (RTCM3)
                                   |
+                            PositionLogger (CSV)
+                                  |
                                   v
                             StatusDisplay (Curses UI)
 ```
 
-The application runs 3 threads:
+The application runs up to 4 threads:
 - **Main thread**: Curses UI event loop and display updates
 - **GNSS reader**: Continuous serial port reading and NMEA parsing
 - **NTRIP client**: Network communication, sends GGA positions, receives RTCM3 corrections
+- **Position logger** (optional): Periodic CSV position recording
 
 ## Project Structure
 
 ```
-rtk_client_final.py   - Application entry point
-rtk_controller.py     - Component orchestrator
-rtk_state.py          - Thread-safe shared state
-gnss_device.py        - Serial communication with GNSS receiver
-ntrip_client.py       - NTRIP protocol client
-nmea_parser.py        - NMEA sentence parser
-status_display.py     - Curses-based terminal UI
-rtk_config.py         - CLI argument parsing
-rtk_constants.py      - Shared constants
+rtk_client_final.py        - Application entry point
+rtk_controller.py          - Component orchestrator
+rtk_state.py               - Thread-safe shared state
+gnss_device.py             - Serial communication with GNSS receiver
+module_profiles.py         - GNSS module profiles (LC29H, generic)
+ntrip_client.py            - NTRIP protocol client
+ntrip_connection_state.py  - NTRIP connection state machine
+rtcm_parser.py             - RTCM3 message type extraction
+nmea_parser.py             - NMEA sentence parser
+status_display.py          - Curses-based terminal UI
+position_logger.py         - CSV position logging
+state_persistence.py       - JSON state save/load
+rtk_config.py              - CLI argument + YAML config parsing
+rtk_constants.py           - Shared constants
 ```
 
 ## Logging
@@ -142,7 +173,7 @@ Log files use rotation (5 MB max, 3 backups):
 # Run linter
 ruff check .
 
-# Run tests (73 tests)
+# Run tests (141 tests)
 pytest -v
 ```
 
@@ -164,6 +195,10 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ### Terminal too small
 - Minimum terminal size: 50 columns x 15 rows
 - Resize your terminal and press any key to trigger redraw
+
+### Serial port not found
+- Use `--port auto` to auto-discover available ports
+- Check device permissions (`sudo usermod -aG dialout $USER`)
 
 ## License
 

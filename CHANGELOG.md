@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.2.0] - 2026-03-27
+
+Multi-GNSS-module support and 6 new features.
+
+### Added
+- **Multi-module support**: `ModuleProfile` abstraction with `--gnss-module` flag (`lc29h`, `generic`)
+- **YAML config file**: `--config config.yaml` with CLI override support
+- **Position logging**: `--position-log` CSV export with configurable interval
+- **Serial auto-discovery**: `--port auto` detects GNSS receivers via `serial.tools.list_ports`
+- **Help overlay**: `?` key shows keyboard shortcuts in the curses UI
+- **State persistence**: Saves GNSS state to `.rtk_state.json` on shutdown, restores on startup
+- `module_profiles.py` with `LC29HProfile` and `GenericProfile`
+- `position_logger.py` for CSV position recording
+- `state_persistence.py` for JSON state save/load
+- `ntrip_connection_state.py` extracted from `ntrip_client.py`
+- `rtcm_parser.py` extracted from `ntrip_client.py`
+- `config.example.yaml` template
+- `pyyaml` dependency added to `requirements.txt`
+- 141 tests total (+25 new)
+
+### Changed
+- `GnssDevice` accepts `ModuleProfile` parameter, delegates config/ACK logic to profile
+- `RtkController` resolves profile from config and passes to `GnssDevice`
+- UI title is dynamic based on active module profile
+- `NtripClient` split into 3 focused modules (was 670 lines)
+- Application description changed from "LC29HDA" to generic "RTK GNSS Client"
+
 ## [0.1.0] - 2026-03-27
 
 First documented release with professional development practices.
