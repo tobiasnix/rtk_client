@@ -32,7 +32,7 @@ class RtkController:
         # Placeholder for the GNSS reading thread
         self._gnss_read_thread: Optional[threading.Thread] = None
 
-    def _read_gnss_data_loop(self):
+    def _read_gnss_data_loop(self) -> None:
         """Thread loop to continuously read and parse data from GNSS device."""
         logger.info("GNSS data reading loop started.")
         while self._running.is_set():

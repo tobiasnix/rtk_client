@@ -84,8 +84,8 @@ class GnssState:
                     snapshot[key] = value
             return snapshot
 
-    def add_ui_log_message(self, message: str):
-        """Adds a message to the UI log buffer with extreme formatting to prevent display issues."""
+    def add_ui_log_message(self, message: str) -> None:
+        """Adds a message to the UI log buffer with formatting to prevent display issues."""
         with self._lock:
             timestamp = datetime.now().strftime("%H:%M:%S")
 

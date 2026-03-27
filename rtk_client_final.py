@@ -3,6 +3,7 @@
 import argparse
 import curses
 import logging
+import logging.handlers
 import os
 import signal
 import sys
@@ -248,8 +249,11 @@ if __name__ == "__main__":
 
         root_logger.setLevel(logging.DEBUG) # Capture all levels at root
 
-        # File Handler (always logs DEBUG level)
-        file_handler = logging.FileHandler(log_filename, mode='w', encoding='utf-8')
+        # File Handler with rotation (always logs DEBUG level)
+        # maxBytes=5MB, keep 3 backup files
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_filename, maxBytes=5*1024*1024, backupCount=3, encoding='utf-8'
+        )
         file_handler.setFormatter(log_formatter)
         file_handler.setLevel(logging.DEBUG)
         root_logger.addHandler(file_handler)

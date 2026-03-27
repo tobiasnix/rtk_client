@@ -119,15 +119,24 @@ rtk_config.py         - CLI argument parsing
 rtk_constants.py      - Shared constants
 ```
 
+## Logging
+
+Log files use rotation (5 MB max, 3 backups):
+- Default: `rtk_client.log` (configurable with `--log-file`)
+- Debug level: add `--debug` flag
+- Previous logs preserved as `rtk_client.log.1`, `.2`, `.3`
+
 ## Development
 
 ```bash
 # Run linter
 ruff check .
 
-# Run tests
+# Run tests (73 tests)
 pytest -v
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Troubleshooting
 
