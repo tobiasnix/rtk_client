@@ -6,6 +6,7 @@ from typing import Optional
 
 import serial
 
+from module_profiles import LC29HProfile, ModuleProfile
 from rtk_constants import SERIAL_TIMEOUT
 from rtk_state import GnssState
 
@@ -13,11 +14,13 @@ logger = logging.getLogger(__name__)
 
 class GnssDevice:
     """Handles serial communication with the GNSS module."""
-    def __init__(self, port: str, baudrate: int, state: GnssState):
+    def __init__(self, port: str, baudrate: int, state: GnssState,
+                 profile: Optional[ModuleProfile] = None):
         self._port_name = port
         self._baudrate = baudrate
         self._serial_port: Optional[serial.Serial] = None
         self._state = state
+        self._profile: ModuleProfile = profile or LC29HProfile()
 
     def connect(self) -> bool:
         """Establishes the serial connection."""
@@ -111,13 +114,10 @@ class GnssDevice:
 
             # Optional: Add check for ACK if expected
             if expect_ack:
-                 ack_prefix = f"$PAIR001,{original_command_name[4:]},0" # Assumes command is $PAIRxxxx
-                 if response and response.startswith(ack_prefix):
+                 if self._profile.check_ack(original_command_name, response):
                      logger.debug(f"Command {original_command_name} acknowledged successfully.")
                  elif response:
                      logger.warning(f"Command {original_command_name} received non-ACK response: {response}")
-                     # Treat non-ACK as failure for ACK-expecting commands
-                     # return None # Or return the response and let caller decide
                  else:
                      logger.warning(f"No response received for expected ACK to {original_command_name}")
                      # return None
@@ -212,53 +212,41 @@ class GnssDevice:
              return None
 
     def configure_module(self) -> bool:
-        """Sends configuration commands to the LC29H(DA) module. Returns True if all expected ACKs received."""
-        logger.info("Configuring LC29H (DA) module...")
+        """Sends configuration commands via the active ModuleProfile. Returns True if all expected ACKs received."""
+        logger.info(f"Configuring module via {self._profile.display_name} profile...")
         self._state.add_ui_log_message("Configuring GNSS module...")
-        time.sleep(0.5) # Delay before starting config
+        time.sleep(0.5)  # Delay before starting config
 
         # --- Get Firmware Version ---
-        # Use expect_ack=False as firmware response is not a standard ACK
-        version_response = self.send_command("PQTMVERNO", expect_ack=False)
-        fw_version = "Unknown"
-        if version_response:
-            try:
-                if version_response.startswith("$PQTMVERNO,"):
-                    parts = version_response.split(',')
-                    # Added check for sufficient parts
-                    if len(parts) >= 2 and parts[1]:
-                        fw_version = parts[1]
-                        logger.info(f"Detected Firmware (parsed): {fw_version}")
-                    else:
-                         logger.warning(f"Could not split firmware response correctly: {version_response}")
-                         fw_version = "Parse Error (Split)"
-                elif "ERROR" in version_response.upper():
-                    logger.warning(f"Firmware query returned error: {version_response}")
-                    fw_version = "Query Error"
+        fw_cmd = self._profile.firmware_command()
+        if fw_cmd is not None:
+            version_response = self.send_command(fw_cmd, expect_ack=False)
+            fw_version = "Unknown"
+            if version_response:
+                parsed = self._profile.parse_firmware_response(version_response)
+                if parsed:
+                    fw_version = parsed
+                    logger.info(f"Detected Firmware (parsed): {fw_version}")
                 else:
-                    logger.warning(f"Unexpected firmware response format: {version_response}")
-                    fw_version = "Parse Error (Format)"
-            except Exception as e:
-                logger.warning(f"Exception parsing firmware version from '{version_response}': {e}")
-                fw_version = "Parse Exception"
+                    logger.warning(f"Could not parse firmware response: {version_response}")
+                    fw_version = "Parse Error"
+            else:
+                logger.warning("No response received for firmware query.")
+                fw_version = "No Response"
         else:
-            logger.warning("No response received for firmware query.")
-            fw_version = "No Response"
+            fw_version = "N/A"
+            logger.info("Profile does not support firmware query; skipping.")
 
         self._state.update(firmware_version=fw_version)
-        if fw_version not in ["Unknown", "No Response"]:
+        if fw_version not in ["Unknown", "No Response", "N/A"]:
             self._state.add_ui_log_message(f"Firmware: {fw_version}")
 
         # --- Send Configuration Commands ---
-        commands = [
-            {"cmd": "PAIR062,0,1", "ack": True},  # GGA 1Hz
-            {"cmd": "PAIR062,4,1", "ack": True},  # RMC 1Hz
-            {"cmd": "PAIR062,2,1", "ack": True},  # GSA 1Hz - This one failed in the log
-            {"cmd": "PAIR062,3,1", "ack": True},  # GSV 1Hz
-            {"cmd": "PAIR062,5,1", "ack": True},  # VTG 1Hz
-            {"cmd": "PAIR436,1",   "ack": True},  # Enable RTCM input?
-            {"cmd": "PAIR513",     "ack": True},  # Enable RTK mode?
-        ]
+        commands = self._profile.config_commands()
+        if not commands:
+            logger.info("Profile has no configuration commands; skipping.")
+            return True
+
         logger.info(f"Sending {len(commands)} configuration commands...")
         success_count = 0
         total_sent = 0
@@ -266,29 +254,24 @@ class GnssDevice:
         for item in commands:
             cmd_str = item["cmd"]
             expect_ack = item["ack"]
-            command_name = cmd_str.split(',')[0] # For logging
+            command_name = cmd_str.split(",")[0]  # For logging
 
-            # Pass expect_ack to send_command
             response = self.send_command(cmd_str, expect_ack=expect_ack)
             total_sent += 1
 
-            # Check response based on whether ACK was expected
             if expect_ack:
-                ack_prefix = f"$PAIR001,{command_name[4:]},0"
-                if response and response.startswith(ack_prefix):
+                if self._profile.check_ack(cmd_str, response):
                     success_count += 1
-                    # Success already logged in send_command if debug level is high enough
                 else:
-                    # Failure/unexpected response already logged by send_command
                     logger.error(f"Configuration command {command_name} failed or received unexpected response.")
-            elif response: # If ACK wasn't expected, just receiving anything might be okay
-                success_count += 1 # Count non-ACK commands as success if they get *any* response
-            else: # No response at all is usually bad
-                 logger.error(f"Configuration command {command_name} (no ACK expected) received no response.")
+            elif response:
+                success_count += 1
+            else:
+                logger.error(f"Configuration command {command_name} (no ACK expected) received no response.")
 
-            time.sleep(0.15) # Delay between commands
+            time.sleep(0.15)  # Delay between commands
 
-        config_success = (success_count == total_sent)
+        config_success = success_count == total_sent
         log_func = logger.info if config_success else logger.warning
         log_func(f"Module configuration complete. {success_count}/{total_sent} commands acknowledged/responded as expected.")
         self._state.add_ui_log_message(f"Module config sent ({success_count}/{total_sent} Ack).")

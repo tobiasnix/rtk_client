@@ -37,6 +37,7 @@ class GnssState:
         self.fix_type_counter: Counter = Counter()
         self.have_position_lock: bool = False
         self.firmware_version: str = "Unknown"
+        self.module_name: str = "GNSS Receiver"
         # Satellite Tracking
         self.satellites_info: Dict[str, Dict[str, Any]] = {} # Key: Talker-PRN
         self.snr_stats: Dict[str, float] = {"min": 0, "max": 0, "avg": 0, "good_count": 0, "bad_count": 0}

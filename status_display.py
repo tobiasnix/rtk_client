@@ -237,7 +237,8 @@ class StatusDisplay:
             return  # Too small to draw anything meaningful
 
         # Draw title centered
-        title = f" LC29HDA RTK Status - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
+        module = state.get('module_name', 'RTK GNSS')
+        title = f" {module} RTK Status - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
         title_x = max(1, (max_x - len(title)) // 2)
         self._addstr_safe(win, 1, title_x, title, self._get_color("bold"))
 

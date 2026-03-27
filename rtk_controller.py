@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, Optional
 
 from gnss_device import GnssDevice
+from module_profiles import get_profile
 from nmea_parser import NmeaParser
 from ntrip_client import NtripClient
 
@@ -23,8 +24,11 @@ class RtkController:
         self._config = config
         # Initialize state first, as other components depend on it
         self._state = GnssState(config.default_lat, config.default_lon, config.default_alt)
+        # Resolve module profile and propagate display name to state
+        self._profile = get_profile(config.gnss_module)
+        self._state.module_name = self._profile.display_name
         # Initialize components, passing the state and other dependencies
-        self._gnss_device = GnssDevice(config.serial_port, config.baud_rate, self._state)
+        self._gnss_device = GnssDevice(config.serial_port, config.baud_rate, self._state, profile=self._profile)
         self._nmea_parser = NmeaParser(self._state)
         self._ntrip_client = NtripClient(config, self._state, self._gnss_device)
         # Main running flag for the application

@@ -1,6 +1,6 @@
 # RTK Client
 
-A terminal-based RTK GNSS client for real-time kinematic positioning with NTRIP correction data. Designed for use with the Quectel LC29H(DA) GNSS module.
+A terminal-based RTK GNSS client for real-time kinematic positioning with NTRIP correction data. Supports multiple GNSS receivers including Quectel LC29H(DA) and any standard NMEA module.
 
 ## Features
 
@@ -40,6 +40,7 @@ python3 rtk_client_final.py [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `--gnss-module` | `lc29h` | GNSS module type (lc29h, generic) |
 | `--port` | `/dev/ttyUSB0` | Serial port of GNSS receiver |
 | `--baud` | `115200` | Baud rate for serial connection |
 | `--ntrip-server` | `193.137.94.71` | NTRIP caster server address |
@@ -74,6 +75,15 @@ python3 rtk_client_final.py \
 |-----|--------|
 | `q` | Quit application |
 | `r` | Reset NTRIP connection |
+
+## Supported Modules
+
+| Module | `--gnss-module` | Notes |
+|--------|----------------|-------|
+| Quectel LC29H(DA) | `lc29h` (default) | Full support with PAIR/PQTM config commands |
+| Any NMEA receiver | `generic` | No proprietary config, standard NMEA + RTCM3 only |
+
+To add support for a new module, create a `ModuleProfile` subclass in `module_profiles.py`.
 
 ## Security
 
