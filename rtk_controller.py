@@ -91,7 +91,7 @@ class RtkController:
         self._ntrip_client.start()
         # Check if NTRIP thread started (optional, basic check)
         time.sleep(0.1) # Give thread a moment to start
-        if not self._ntrip_client._thread or not self._ntrip_client._thread.is_alive():
+        if not self._ntrip_client.is_running():
              logger.critical("Failed to start NTRIP client thread.")
              self._state.add_ui_log_message("FATAL: Failed to start NTRIP thread!")
              self._running.clear() # Signal read thread to stop
@@ -105,7 +105,7 @@ class RtkController:
         self._state.add_ui_log_message("System running. Press 'q' to quit.")
         return True # Indicate success
 
-    def stop(self):
+    def stop(self) -> None:
         """Stops all components and threads gracefully."""
         if not self._running.is_set():
             logger.info("RTK Controller already stopped or not started.")
@@ -135,8 +135,10 @@ class RtkController:
         """Indicates if the controller's main running flag is set."""
         return self._running.is_set()
 
-    # Expose state object for direct access if needed (e.g., by display)
-    # Consider if this violates encapsulation - depends on design preference
+    def reset_ntrip_connection(self) -> bool:
+        """Resets the NTRIP connection via the client."""
+        return self._ntrip_client.reset_connection()
+
     @property
     def state(self) -> GnssState:
        return self._state

@@ -506,8 +506,8 @@ class StatusDisplay:
 
             # Choose SNR color
             if snr is not None and snr > 0:
-                snr_color = "green" if snr >= self.SNR_THRESHOLD_GOOD else \
-                           "yellow" if snr >= self.SNR_THRESHOLD_BAD else "red"
+                snr_color = "green" if snr >= SNR_THRESHOLD_GOOD else \
+                           "yellow" if snr >= SNR_THRESHOLD_BAD else "red"
             else:
                 snr_color = "dim"
 

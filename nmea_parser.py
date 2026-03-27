@@ -1,9 +1,9 @@
 # nmea_parser.py - Parses NMEA sentences and updates state
 
 import logging
-from collections import Counter  # Added deque
+from collections import Counter
 from datetime import datetime, timezone
-from typing import Any, Dict  # Added List
+from typing import Any, Dict
 
 import pynmea2
 
@@ -11,11 +11,6 @@ from rtk_constants import *  # Import constants
 from rtk_state import GnssState
 
 logger = logging.getLogger(__name__)
-
-# Define SNR thresholds in constants or here
-SNR_THRESHOLD_GOOD = 35
-SNR_THRESHOLD_BAD = 20
-
 
 class NmeaParser:
     """Parses NMEA sentences and updates the shared state."""
@@ -25,70 +20,6 @@ class NmeaParser:
         self._current_gsv_sequence_sats = {}
         self._current_gsv_systems = Counter()
 
-    def _parse_gsa(self, msg: pynmea2.types.talker.GSA) -> None:
-        """Parses GSA message with improved PRN handling."""
-        # Nur bei GSA v2.x Meldungen
-        prn_logging_enabled = False  # Flag, um Logging dieser häufigen Meldungen zu kontrollieren
-
-        active_sat_keys = set()
-        talker = msg.talker # e.g., 'GP', 'GL', 'GA', 'GN'
-        # Caching der Satelliten für schnelleren Zugriff
-        current_sats = self._state.satellites_info.copy() if hasattr(self._state, 'satellites_info') else {}
-
-        # PRNs nach Talker-Typ gruppieren für bessere Zuordnung
-        prn_to_key_map = {}
-        for key, sat_info in current_sats.items():
-            prn = sat_info.get('prn')
-            if prn:
-                prn_to_key_map[prn] = key
-
-        # Iterate through the 12 possible satellite ID fields
-        for i in range(1, 13):
-            sat_id_field = f'sv_id{i:02}' # Field names are sv_id01, sv_id02, ...
-            if hasattr(msg, sat_id_field):
-                prn = getattr(msg, sat_id_field)
-                if not prn:
-                    continue  # Skip empty PRNs
-
-                # Extended handling for 'GN' talker (multiple constellations)
-                if talker == 'GN':
-                    # Lookup in our cached map first (faster than iteration)
-                    if prn in prn_to_key_map:
-                        active_sat_keys.add(prn_to_key_map[prn])
-                    else:
-                        # Only log in debug mode or reduced frequency to avoid log spam
-                        if prn_logging_enabled:
-                            logger.debug(f"GNGSA referenced PRN {prn}, but it was not found in current GSV info.")
-                else:
-                    # For specific talkers (GP, GL, etc.), the key is straightforward
-                    sat_key = f"{talker}-{prn}"
-                    active_sat_keys.add(sat_key)
-
-        # Update the satellites efficiently
-        updated_count = 0
-        deactivated_count = 0
-
-        # Perform updates only on satellites that might change
-        for key, sat_info in current_sats.items():
-            current_status = sat_info.get('active', False)
-            is_relevant_talker = (talker == 'GN' or key.startswith(talker + '-'))
-
-            if not is_relevant_talker:
-                continue  # Skip satellites that shouldn't be affected by this GSA
-
-            # Set new status
-            new_status = key in active_sat_keys
-            if new_status != current_status:
-                # Only update satellites whose status has changed
-                sat_info['active'] = new_status
-                if new_status:
-                    updated_count += 1
-                else:
-                    deactivated_count += 1
-
-        # Update the state with the modified satellite info
-        if updated_count > 0 or deactivated_count > 0:
-            self._state.update(satellites_info=current_sats)
     def _get_fix_status_string(self, fix_type: int) -> str:
         """Maps fix type integer to a status string."""
         status_map = {
@@ -252,26 +183,20 @@ class NmeaParser:
             sat_key = f"{talker}-{prn}"
 
             # Store satellite data in the temporary sequence dict
-            # Ensure the temporary dict exists (it should if is_first_sentence logic is correct)
-            if hasattr(self, '_current_gsv_sequence_sats'):
-                 self._current_gsv_sequence_sats[sat_key] = {
-                    'prn': prn,
-                    'snr': snr,
-                    'elevation': elev,
-                    'azimuth': azim,
-                    'system': sat_system,
-                    'active': False # Default to not active, GSA will update
-                }
-                 # Count system only if SNR indicates signal reception
-                 if snr > 0:
-                     self._current_gsv_systems[sat_system] += 1
-            else:
-                 # This case should ideally not be reached if first sentence logic works
-                 logger.warning(f"GSV processing error: _current_gsv_sequence_sats missing for {sat_key}")
-                 return # Cannot store data
+            self._current_gsv_sequence_sats[sat_key] = {
+                'prn': prn,
+                'snr': snr,
+                'elevation': elev,
+                'azimuth': azim,
+                'system': sat_system,
+                'active': False # Default to not active, GSA will update
+            }
+            # Count system only if SNR indicates signal reception
+            if snr > 0:
+                self._current_gsv_systems[sat_system] += 1
 
         # Update state after the last sentence of the sequence is received
-        if is_last_sentence and hasattr(self, '_current_gsv_sequence_sats'):
+        if is_last_sentence:
             # Check for potential mismatches in total count (optional debug)
             if len(self._current_gsv_sequence_sats) != num_sv_in_view:
                  logger.debug(f"GSV mismatch: Header reported {num_sv_in_view} SVs, found {len(self._current_gsv_sequence_sats)} in sequence.")

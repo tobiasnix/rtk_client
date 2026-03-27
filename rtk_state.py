@@ -89,9 +89,7 @@ class GnssState:
         with self._lock:
             timestamp = datetime.now().strftime("%H:%M:%S")
 
-            # Define a safe maximum message length that won't disturb the display
-            # Adjusted based on typical panel width, leaving room for borders/padding
-            MAX_MSG_LENGTH = 70 # Slightly increased but still conservative
+            MAX_MSG_LENGTH = MAX_UI_MESSAGE_LENGTH
 
             # Process message based on content for optimal display
             processed_message = message

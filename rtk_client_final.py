@@ -133,13 +133,13 @@ def main_curses(stdscr, args: argparse.Namespace):
                           break # Exit loop immediately
                      elif key == ord('r') or key == ord('R'):
                           logger.warning("NTRIP reset key 'r' pressed.")
-                          if controller and controller._ntrip_client:
-                               if controller._ntrip_client.reset_connection():
+                          if controller:
+                               if controller.reset_ntrip_connection():
                                     logger.info("NTRIP connection reset successful.")
                                else:
                                     logger.warning("NTRIP connection reset failed (client not running?).")
                           else:
-                               logger.warning("Cannot reset NTRIP: controller or client not available.")
+                               logger.warning("Cannot reset NTRIP: controller not available.")
                      else:
                           # Log other key presses if needed for debugging
                           # logger.debug(f"Key pressed: {key}")
@@ -219,9 +219,8 @@ def main_curses(stdscr, args: argparse.Namespace):
         else:
              logger.warning("Controller object was not available for stopping.")
 
-        # Explicitly clean up StatusDisplay (optional, wrapper should handle curses endwin)
-        # if status_display_obj:
-        #    status_display_obj.close()
+        if status_display_obj:
+            status_display_obj.close()
 
         # Curses cleanup is handled by the curses.wrapper
         logger.info("Exiting main_curses function.")

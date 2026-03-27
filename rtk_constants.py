@@ -62,7 +62,11 @@ IMPORTANT_RTCM_TYPES: Dict[int, str] = {
 }
 
 
+# --- UI Display ---
+MAX_UI_MESSAGE_LENGTH = 70  # Max length for UI log messages
+NTRIP_HEADER_SIZE_LIMIT = 8192  # Max NTRIP response header size in bytes
+
 # --- Logging ---
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 DEFAULT_LOG_FILENAME = "rtk_client.log"
-MAX_LOG_MESSAGES = 100 # Increased UI log buffer size slightly
+MAX_LOG_MESSAGES = 100  # UI log buffer size

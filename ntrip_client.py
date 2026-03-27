@@ -95,8 +95,12 @@ class NtripClient:
             'last_rtcm_data': None
         }
 
-    def start(self):
-        if self._thread is not None and self._thread.is_alive():
+    def is_running(self) -> bool:
+        """Returns True if the NTRIP client thread is alive."""
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self) -> None:
+        if self.is_running():
             logger.warning("NTRIP client thread already running.")
             return
 
@@ -110,7 +114,7 @@ class NtripClient:
         logger.info("NTRIP client thread started.")
         self._log_ui_message("NTRIP client starting...")
 
-    def stop(self):
+    def stop(self) -> None:
         if not self._running.is_set():
             logger.debug("NTRIP client already stopped.")
             return
@@ -280,7 +284,7 @@ class NtripClient:
                 if not chunk:
                     raise ConnectionAbortedError("NTRIP server closed connection during header read")
                 response_bytes.extend(chunk)
-                if len(response_bytes) > 8192: # Limit header size
+                if len(response_bytes) > NTRIP_HEADER_SIZE_LIMIT:
                     raise OverflowError("NTRIP header too large")
 
             headers_part, _, body_part = response_bytes.partition(b"\r\n\r\n")
@@ -411,11 +415,6 @@ class NtripClient:
              return
 
         try:
-            # Ensure socket is still valid before sending
-            # This doesn't guarantee it, but helps catch obvious cases
-            if current_socket.fileno() == -1:
-                 raise OSError(9, "Bad file descriptor")
-
             current_socket.sendall(gga_sentence.encode('ascii'))
             logger.debug("Sent GGA to NTRIP server.")
             self._last_gga_sent_time = datetime.now(timezone.utc) # Update time only on success
@@ -643,7 +642,7 @@ class NtripClient:
         self._connection_state.set_state(NtripConnectionState.DISCONNECTED, "Run loop exited")
         self._update_state_from_connection_state() # Final state update
 
-    def reset_connection(self):
+    def reset_connection(self) -> bool:
         """Resets the connection state, clearing 'gave up' and attempts reconnect."""
         if not self._running.is_set():
             logger.info("Cannot reset connection: NTRIP client not running.")

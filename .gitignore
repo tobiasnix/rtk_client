@@ -1,2 +1,3 @@
 *.log
-__*
+__pycache__/
+*.pyc
