@@ -20,6 +20,7 @@ class TestRtkControllerInit:
         args.default_lat = 40.0
         args.default_lon = -7.0
         args.default_alt = 100.0
+        args.gnss_module = "lc29h"
         args.debug = False
 
         config = Config(args)
@@ -43,6 +44,7 @@ class TestRtkControllerInit:
         args.default_lat = 40.0
         args.default_lon = -7.0
         args.default_alt = 100.0
+        args.gnss_module = "lc29h"
         args.debug = False
 
         config = Config(args)
@@ -70,6 +72,7 @@ class TestRtkControllerStop:
         args.default_lat = 0.0
         args.default_lon = 0.0
         args.default_alt = 0.0
+        args.gnss_module = "lc29h"
         args.debug = False
 
         config = Config(args)

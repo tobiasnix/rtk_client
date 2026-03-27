@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from gnss_device import GnssDevice
+from module_profiles import GenericProfile, LC29HProfile
 from rtk_state import GnssState
 
 
@@ -149,3 +150,47 @@ class TestGnssDeviceClose:
         state = GnssState(0.0, 0.0, 0.0)
         device = GnssDevice("/dev/ttyUSB0", 115200, state)
         device.close()  # should not raise
+
+
+class TestGnssDeviceWithProfile:
+    @patch("gnss_device.time.sleep")
+    @patch("gnss_device.serial.Serial")
+    def test_configure_with_lc29h_profile(self, mock_serial_class, _mock_sleep):
+        """LC29H profile sends 1 firmware query + 7 config commands = 8 writes."""
+        mock_port = MagicMock()
+        mock_port.is_open = True
+        # Return ACK-style responses for every write
+        mock_port.readline.return_value = b"$PAIR001,062,0*checksum\r\n"
+        mock_serial_class.return_value = mock_port
+
+        state = GnssState(0.0, 0.0, 0.0)
+        profile = LC29HProfile()
+        device = GnssDevice("/dev/ttyUSB0", 115200, state, profile=profile)
+        device.connect()
+        device.configure_module()
+
+        # 1 firmware query + 7 config commands = 8 total writes
+        assert mock_port.write.call_count == 8
+
+    @patch("gnss_device.time.sleep")
+    @patch("gnss_device.serial.Serial")
+    def test_configure_with_generic_profile(self, mock_serial_class, _mock_sleep):
+        """Generic profile has no firmware cmd and no config commands -> 0 writes, returns True."""
+        mock_port = MagicMock()
+        mock_port.is_open = True
+        mock_serial_class.return_value = mock_port
+
+        state = GnssState(0.0, 0.0, 0.0)
+        profile = GenericProfile()
+        device = GnssDevice("/dev/ttyUSB0", 115200, state, profile=profile)
+        device.connect()
+        result = device.configure_module()
+
+        assert result is True
+        assert mock_port.write.call_count == 0
+
+    def test_default_profile_is_lc29h(self):
+        """When no profile is passed, the default should be LC29H."""
+        state = GnssState(0.0, 0.0, 0.0)
+        device = GnssDevice("/dev/ttyUSB0", 115200, state)
+        assert device._profile.name == "lc29h"
