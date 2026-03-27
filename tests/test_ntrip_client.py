@@ -1,5 +1,6 @@
 from gnss_device import GnssDevice
 from ntrip_client import NtripClient, NtripConnectionState
+from rtk_constants import NTRIP_HEADER_SIZE_LIMIT, SNR_THRESHOLD_BAD, SNR_THRESHOLD_GOOD
 
 
 class TestNtripConnectionState:
@@ -103,3 +104,34 @@ class TestCalculateChecksum:
             expected ^= ord(c)
         result = GnssDevice._calculate_checksum(sentence)
         assert result == f"{expected:02X}"
+
+
+class TestConstants:
+    def test_snr_thresholds_defined(self):
+        assert SNR_THRESHOLD_GOOD == 35
+        assert SNR_THRESHOLD_BAD == 20
+
+    def test_header_size_limit(self):
+        assert NTRIP_HEADER_SIZE_LIMIT == 8192
+
+
+class TestNtripConnectionStateTransitions:
+    def test_connecting_state(self):
+        state = NtripConnectionState()
+        state.set_state(NtripConnectionState.CONNECTING, "Connecting...")
+        assert state.is_connecting() is True
+        assert state.is_connected() is False
+
+    def test_full_lifecycle(self):
+        state = NtripConnectionState()
+        # disconnected -> connecting -> connected -> disconnected -> gave_up
+        state.set_state(NtripConnectionState.CONNECTING)
+        assert state.is_connecting()
+        state.set_state(NtripConnectionState.CONNECTED, "OK")
+        assert state.is_connected()
+        assert state.reconnect_attempts == 0
+        state.set_state(NtripConnectionState.DISCONNECTED, "Lost")
+        assert state.is_disconnected()
+        state.increment_reconnect_attempts()
+        state.set_state(NtripConnectionState.GAVE_UP, "Max retries")
+        assert state.has_given_up()
