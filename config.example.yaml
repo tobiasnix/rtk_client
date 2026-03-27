@@ -1,0 +1,29 @@
+# RTK Client Configuration File
+# Copy this file to config.yaml and adjust the values to your setup.
+# CLI arguments override values from this file.
+
+# Serial port of GNSS receiver
+port: /dev/ttyACM0
+baud: 115200
+
+# GNSS module type (lc29h, generic)
+gnss_module: generic
+
+# NTRIP caster configuration
+ntrip:
+  server: caster.example.com
+  port: 2101
+  mountpoint: MOUNT1
+  user: myuser
+  pass: mypass
+  tls: true
+
+# Fallback position (used for GGA when no fix)
+position:
+  lat: 48.123
+  lon: 11.456
+  alt: 520.0
+
+# Logging
+log_file: my.log
+debug: true
