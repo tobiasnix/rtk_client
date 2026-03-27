@@ -2,7 +2,9 @@
 
 import argparse
 import logging
-from rtk_constants import * # Import constants
+import os
+
+from rtk_constants import *  # Import constants
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +16,12 @@ class Config:
         self.ntrip_server: str = args.ntrip_server or DEFAULT_NTRIP_SERVER
         self.ntrip_port: int = args.ntrip_port or DEFAULT_NTRIP_PORT
         self.ntrip_mountpoint: str = args.ntrip_mountpoint or DEFAULT_NTRIP_MOUNTPOINT
-        self.ntrip_username: str = args.ntrip_user or DEFAULT_NTRIP_USERNAME
-        self.ntrip_password: str = args.ntrip_pass or DEFAULT_NTRIP_PASSWORD
+        self.ntrip_username: str = args.ntrip_user or os.environ.get('NTRIP_USER', DEFAULT_NTRIP_USERNAME)
+        self.ntrip_password: str = args.ntrip_pass or os.environ.get('NTRIP_PASS', DEFAULT_NTRIP_PASSWORD)
         self.default_lat: float = args.default_lat or DEFAULT_LAT
         self.default_lon: float = args.default_lon or DEFAULT_LON
         self.default_alt: float = args.default_alt or DEFAULT_ALT
+        self.ntrip_tls: bool = args.ntrip_tls
         self.debug: bool = args.debug
 
         # Note: Log level setup is handled in main.py after Config is created
@@ -40,8 +43,9 @@ def parse_arguments() -> argparse.Namespace:
     ntrip_group.add_argument('--ntrip-server', default=DEFAULT_NTRIP_SERVER, help='NTRIP caster server address')
     ntrip_group.add_argument('--ntrip-port', type=int, default=DEFAULT_NTRIP_PORT, help='NTRIP caster server port')
     ntrip_group.add_argument('--ntrip-mountpoint', default=DEFAULT_NTRIP_MOUNTPOINT, help='NTRIP caster mountpoint')
-    ntrip_group.add_argument('--ntrip-user', default=DEFAULT_NTRIP_USERNAME, help='NTRIP username')
-    ntrip_group.add_argument('--ntrip-pass', default=DEFAULT_NTRIP_PASSWORD, help='NTRIP password')
+    ntrip_group.add_argument('--ntrip-user', default=None, help='NTRIP username (or set NTRIP_USER env var)')
+    ntrip_group.add_argument('--ntrip-pass', default=None, help='NTRIP password (or set NTRIP_PASS env var)')
+    ntrip_group.add_argument('--ntrip-tls', action='store_true', default=DEFAULT_NTRIP_TLS, help='Enable TLS/SSL for NTRIP connection')
 
     # Fallback Position Arguments
     pos_group = parser.add_argument_group('Fallback Position (Used for GGA when no fix)')

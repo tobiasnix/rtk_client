@@ -1,19 +1,21 @@
 # ntrip_client.py - Handles NTRIP connection and data exchange
 
-import socket
 import base64
-import threading
-import time
 import logging
 import random
-from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Dict, Any
+import socket
+import ssl
+import threading
+import time
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+
+from gnss_device import GnssDevice
 
 # Import necessary components from other modules
 from rtk_config import Config
-from rtk_state import GnssState
-from gnss_device import GnssDevice
 from rtk_constants import *
+from rtk_state import GnssState
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +242,11 @@ class NtripClient:
             # Create and configure the socket
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._socket.settimeout(NTRIP_TIMEOUT)
+            if self._config.ntrip_tls:
+                context = ssl.create_default_context()
+                self._socket = context.wrap_socket(
+                    self._socket, server_hostname=self._config.ntrip_server
+                )
             self._socket.connect((self._config.ntrip_server, self._config.ntrip_port))
 
             # Prepare and send request

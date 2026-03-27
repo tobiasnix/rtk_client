@@ -3,16 +3,17 @@
 import argparse
 import curses
 import logging
-import sys
-import time
-import signal
-import traceback
 import os
+import signal
+import sys
+from typing import Optional
+
+from rtk_config import Config, parse_arguments
 
 # Import necessary components from other modules
 from rtk_constants import DEFAULT_LOG_FILENAME, LOG_FORMAT
-from rtk_config import Config, parse_arguments
 from rtk_controller import RtkController
+
 # Import the class directly
 from status_display import StatusDisplay
 

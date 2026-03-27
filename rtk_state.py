@@ -1,18 +1,20 @@
 # rtk_state.py - Shared state management for the RTK client
 
-import threading
+import copy
 import logging
-from datetime import datetime, timezone
+import threading
 from collections import Counter, deque
-from typing import Optional, Dict, Any
-from rtk_constants import * # Import constants
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+from rtk_constants import *  # Import constants
 
 logger = logging.getLogger(__name__)
 
 class GnssState:
     """Thread-safe container for GNSS and NTRIP state."""
     def __init__(self, default_lat: float, default_lon: float, default_alt: float):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         # Default position
         self.default_lat: float = default_lat
         self.default_lon: float = default_lon
@@ -70,10 +72,17 @@ class GnssState:
                     logger.warning(f"Attempted to update non-existent state variable: {key}")
 
     def get_state_snapshot(self) -> Dict[str, Any]:
-        """Return a copy of the current state in a thread-safe manner."""
+        """Return a deep copy of the current state in a thread-safe manner."""
         with self._lock:
-            # Shallow copy is usually sufficient for display purposes
-            return self.__dict__.copy() # Copy the instance dictionary
+            snapshot = {}
+            for key, value in self.__dict__.items():
+                if key == '_lock':
+                    continue
+                try:
+                    snapshot[key] = copy.deepcopy(value)
+                except TypeError:
+                    snapshot[key] = value
+            return snapshot
 
     def add_ui_log_message(self, message: str):
         """Adds a message to the UI log buffer with extreme formatting to prevent display issues."""
