@@ -1,12 +1,14 @@
 # nmea_parser.py - Parses NMEA sentences and updates state
 
-import pynmea2
 import logging
+from collections import Counter  # Added deque
 from datetime import datetime, timezone
-from collections import Counter, deque # Added deque
-from typing import Dict, Any, List # Added List
+from typing import Any, Dict  # Added List
+
+import pynmea2
+
+from rtk_constants import *  # Import constants
 from rtk_state import GnssState
-from rtk_constants import * # Import constants
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +29,12 @@ class NmeaParser:
         """Parses GSA message with improved PRN handling."""
         # Nur bei GSA v2.x Meldungen
         prn_logging_enabled = False  # Flag, um Logging dieser häufigen Meldungen zu kontrollieren
-        
+
         active_sat_keys = set()
         talker = msg.talker # e.g., 'GP', 'GL', 'GA', 'GN'
         # Caching der Satelliten für schnelleren Zugriff
         current_sats = self._state.satellites_info.copy() if hasattr(self._state, 'satellites_info') else {}
-        
+
         # PRNs nach Talker-Typ gruppieren für bessere Zuordnung
         prn_to_key_map = {}
         for key, sat_info in current_sats.items():
@@ -70,7 +72,7 @@ class NmeaParser:
         for key, sat_info in current_sats.items():
             current_status = sat_info.get('active', False)
             is_relevant_talker = (talker == 'GN' or key.startswith(talker + '-'))
-            
+
             if not is_relevant_talker:
                 continue  # Skip satellites that shouldn't be affected by this GSA
 
@@ -83,7 +85,7 @@ class NmeaParser:
                     updated_count += 1
                 else:
                     deactivated_count += 1
-        
+
         # Update the state with the modified satellite info
         if updated_count > 0 or deactivated_count > 0:
             self._state.update(satellites_info=current_sats)

@@ -1,16 +1,18 @@
 # rtk_controller.py - Orchestrates the RTK client components
 
+import logging
 import threading
 import time
-import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+from gnss_device import GnssDevice
+from nmea_parser import NmeaParser
+from ntrip_client import NtripClient
 
 # Import required components from other modules
 from rtk_config import Config
 from rtk_state import GnssState
-from gnss_device import GnssDevice
-from nmea_parser import NmeaParser
-from ntrip_client import NtripClient
+
 # Note: StatusDisplay is not directly used by the controller, but by main.py
 
 logger = logging.getLogger(__name__)

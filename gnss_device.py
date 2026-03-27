@@ -1,11 +1,13 @@
 # gnss_device.py - Handles serial communication with the GNSS module
 
-import serial
-import time
 import logging
+import time
 from typing import Optional
-from rtk_state import GnssState
+
+import serial
+
 from rtk_constants import SERIAL_TIMEOUT
+from rtk_state import GnssState
 
 logger = logging.getLogger(__name__)
 
