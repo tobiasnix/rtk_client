@@ -9,6 +9,7 @@ from gnss_device import GnssDevice
 from module_profiles import get_profile
 from nmea_parser import NmeaParser
 from ntrip_client import NtripClient
+from position_logger import PositionLogger
 
 # Import required components from other modules
 from rtk_config import Config
@@ -35,6 +36,7 @@ class RtkController:
         self._running = threading.Event()
         # Placeholder for the GNSS reading thread
         self._gnss_read_thread: Optional[threading.Thread] = None
+        self._position_logger: Optional[PositionLogger] = None
 
     def _read_gnss_data_loop(self) -> None:
         """Thread loop to continuously read and parse data from GNSS device."""
@@ -103,6 +105,13 @@ class RtkController:
              return False
 
 
+        # Start position logger if configured
+        if self._config.position_log:
+            self._position_logger = PositionLogger(
+                self._state, self._config.position_log, self._config.position_log_interval
+            )
+            self._position_logger.start()
+
         # Status display thread is handled by the main curses loop in main.py
 
         logger.info("Worker threads started.")
@@ -118,6 +127,10 @@ class RtkController:
         logger.info("Stopping RTK Controller components...")
         self._state.add_ui_log_message("System shutting down...")
         self._running.clear() # Signal all loops to stop
+
+        # Stop position logger
+        if self._position_logger:
+            self._position_logger.stop()
 
         # Stop NTRIP client first (it might be writing to GNSS device)
         self._ntrip_client.stop()
