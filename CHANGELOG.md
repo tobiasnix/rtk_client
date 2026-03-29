@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.0] - 2026-03-29
+
+Bugfixes, demo mode, expanded test suite, and dev tooling.
+
+### Added
+- **Demo mode**: `--demo` flag runs the app with simulated GNSS data and NTRIP — no hardware needed
+- `demo_device.py` replays `data/demo.nmea` in an endless loop (No Fix → GPS → RTK Float → RTK Fixed)
+- `demo_ntrip.py` simulates NTRIP connection with fake RTCM stats
+- `main.py` convenience entry point (delegates to `rtk_client.py`)
+- mypy configuration in `pyproject.toml` (permissive mode)
+- `.pre-commit-config.yaml` with ruff and mypy hooks
+- 302 tests total (+161 new): status_display, nmea_parser, ntrip_client, rtk_controller, connection state, demo components
+- Expanded ruff rules: `B` (bugbear), `UP` (pyupgrade), `SIM` (simplify)
+
+### Fixed
+- **Critical**: `NmeaParser.parse()` method was missing — caused `AttributeError` at runtime
+- **Critical**: `curses.isendwin()` called as window method instead of module function — crashed on exit
+- **Critical**: `StatusDisplay.close()` called `endwin()` which conflicted with `curses.wrapper()` — double cleanup crash
+- Credential exposure: Authorization header and password redacted from debug logs
+- `.env` added to `.gitignore` to prevent accidental credential commits
+- Bare except rule (E722) removed from ruff ignore (no bare excepts existed)
+
+### Changed
+- Renamed `rtk_client_final.py` → `rtk_client.py`
+- Modernized type annotations: `Dict`/`List` → `dict`/`list` across all source files
+- `mypy>=1.0` and `pre-commit>=3.0` added to `requirements-dev.txt`
+
 ## [0.2.0] - 2026-03-27
 
 Multi-GNSS-module support and 6 new features.

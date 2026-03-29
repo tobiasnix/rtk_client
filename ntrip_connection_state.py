@@ -13,11 +13,11 @@ class NtripConnectionState:
     GAVE_UP = "gave_up"
 
     def __init__(self):
-        self.current_state = self.DISCONNECTED
-        self.last_state_change = datetime.now(timezone.utc)
-        self.reconnect_attempts = 0
-        self.error_message = ""
-        self.status_message = "Not connected"
+        self.current_state: str = self.DISCONNECTED
+        self.last_state_change: datetime = datetime.now(timezone.utc)
+        self.reconnect_attempts: int = 0
+        self.error_message: str = ""
+        self.status_message: str = "Not connected"
 
     def set_state(self, new_state: str, message: str = "") -> bool:
         """Changes the connection state and records the timestamp.

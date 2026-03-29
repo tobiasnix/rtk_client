@@ -3,7 +3,7 @@
 import logging
 import os
 import time
-from typing import Optional
+from typing import IO, Optional
 
 from rtk_state import GnssState
 
@@ -23,7 +23,7 @@ class DemoGnssDevice:
     def __init__(self, nmea_file: str = _DEFAULT_DEMO_FILE, state: Optional[GnssState] = None):
         self._nmea_file = nmea_file
         self._state = state
-        self._file = None
+        self._file: Optional[IO[str]] = None
         self._connected = False
         self._line_delay = 0.1  # seconds between lines
 

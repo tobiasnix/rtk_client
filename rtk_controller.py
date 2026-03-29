@@ -41,9 +41,9 @@ class RtkController:
         if config.demo:
             from demo_device import DemoGnssDevice
             from demo_ntrip import DemoNtripClient
-            self._gnss_device = DemoGnssDevice(state=self._state)
+            self._gnss_device: Any = DemoGnssDevice(state=self._state)
             self._nmea_parser = NmeaParser(self._state)
-            self._ntrip_client = DemoNtripClient(self._state)
+            self._ntrip_client: Any = DemoNtripClient(self._state)
             self._state.module_name = "Demo Mode"
             logger.info("Demo mode: using simulated GNSS device and NTRIP client.")
         else:
@@ -175,7 +175,8 @@ class RtkController:
 
     def reset_ntrip_connection(self) -> bool:
         """Resets the NTRIP connection via the client."""
-        return self._ntrip_client.reset_connection()
+        result: bool = self._ntrip_client.reset_connection()
+        return result
 
     @property
     def state(self) -> GnssState:

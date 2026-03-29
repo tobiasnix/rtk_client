@@ -17,8 +17,8 @@ class NmeaParser:
     def __init__(self, state: GnssState):
         self._state = state
         # Temporary storage for GSV sequence building
-        self._current_gsv_sequence_sats = {}
-        self._current_gsv_systems = Counter()
+        self._current_gsv_sequence_sats: dict[str, dict[str, Any]] = {}
+        self._current_gsv_systems: Counter[str] = Counter()
 
     def parse(self, line: str) -> None:
         """Parses an NMEA sentence string and dispatches to the appropriate handler."""

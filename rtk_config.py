@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from rtk_constants import *  # Import constants
 

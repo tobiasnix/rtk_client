@@ -42,7 +42,7 @@ def load_state(filename: str = STATE_FILE) -> Optional[dict[str, Any]]:
         return None
     try:
         with open(path) as f:
-            data = json.load(f)
+            data: dict[str, Any] = json.load(f)
         logger.info(
             f"Loaded saved state from {filename} (saved: {data.get('saved_at', 'unknown')})"
         )

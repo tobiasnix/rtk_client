@@ -98,6 +98,7 @@ class GnssDevice:
         if not self.is_connected():
             logger.error("Cannot send command: Serial port not connected.")
             return None
+        assert self._serial_port is not None
 
         original_command_name = command.split(',')[0] # For logging
 
@@ -126,7 +127,7 @@ class GnssDevice:
             response_time = end_time - start_time
             self._state.update(last_command_response_time_sec=response_time)
 
-            response = response_bytes.decode('ascii', errors='ignore').strip()
+            response: str = response_bytes.decode('ascii', errors='ignore').strip()
             logger.debug(f"Received response for {original_command_name}: {response} (in {response_time:.3f}s)")
 
             # Optional: Add check for ACK if expected
@@ -160,6 +161,7 @@ class GnssDevice:
         """Reads a line from the serial port, non-blocking."""
         if not self.is_connected():
             return None
+        assert self._serial_port is not None
 
         try:
             # Check waiting bytes first
@@ -168,7 +170,7 @@ class GnssDevice:
                 if not line_bytes:
                     return "" # Timeout occurred while reading
                 try:
-                     line = line_bytes.decode('ascii', errors='ignore').strip()
+                     line: str = line_bytes.decode('ascii', errors='ignore').strip()
                      # Very verbose logging - disable unless debugging specific NMEA issues
                      # logger.debug(f"Read line: {line}")
                      return line
@@ -200,11 +202,12 @@ class GnssDevice:
         if not self.is_connected():
             logger.error("Cannot write data: Serial port not connected.")
             return None
+        assert self._serial_port is not None
         try:
              # Add check for zero bytes to prevent unnecessary write calls
              if not data:
                  return 0
-             bytes_written = self._serial_port.write(data)
+             bytes_written: int = self._serial_port.write(data)
              # Consider adding flush if immediate sending is critical,
              # though write() often handles buffering internally.
              # self._serial_port.flush()
@@ -277,7 +280,7 @@ class GnssDevice:
             total_sent += 1
 
             if expect_ack:
-                if self._profile.check_ack(cmd_str, response):
+                if response is not None and self._profile.check_ack(cmd_str, response):
                     success_count += 1
                 else:
                     logger.error(f"Configuration command {command_name} failed or received unexpected response.")

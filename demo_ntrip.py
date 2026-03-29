@@ -4,6 +4,7 @@ import logging
 import random
 import threading
 from datetime import datetime, timezone
+from typing import Optional
 
 from rtk_state import GnssState
 
@@ -23,7 +24,7 @@ class DemoNtripClient:
     def __init__(self, state: GnssState):
         self._state = state
         self._running = threading.Event()
-        self._thread = None
+        self._thread: Optional[threading.Thread] = None
         self._connect_delay = 3.0  # seconds before "connecting"
 
     def start(self) -> None:

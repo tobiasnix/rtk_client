@@ -8,7 +8,7 @@ import ssl
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from gnss_device import GnssDevice
 from ntrip_connection_state import NtripConnectionState
@@ -35,7 +35,7 @@ class NtripClient:
         self._reconnect_timeout = NTRIP_INITIAL_RECONNECT_TIMEOUT
         self._connection_state = NtripConnectionState()
         self._next_reconnect_time: Optional[datetime] = None
-        self._stats = {
+        self._stats: dict[str, Any] = {
             'total_bytes_received': 0,
             'last_data_time': None,
             'rtcm_message_counter': 0,
@@ -452,6 +452,7 @@ class NtripClient:
 
             # --- Connected State Logic ---
             if is_connected:
+                assert current_socket is not None
                 try:
                     # Use non-blocking check first? select() might be better but adds complexity
                     # For simplicity, use timeout on recv

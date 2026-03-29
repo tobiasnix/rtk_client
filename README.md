@@ -62,6 +62,7 @@ python3 rtk_client.py [OPTIONS]
 | `--debug` | off | Enable debug level logging |
 | `--position-log` | *(none)* | Log positions to CSV file |
 | `--position-log-interval` | `5.0` | Position log interval in seconds |
+| `--demo` | off | Run with simulated GNSS data (no hardware needed) |
 
 ### Configuration File
 
@@ -89,6 +90,9 @@ python3 rtk_client.py --port auto --gnss-module generic
 
 # With position logging
 python3 rtk_client.py --position-log positions.csv --position-log-interval 2.0
+
+# Demo mode — no hardware needed
+python3 rtk_client.py --demo
 ```
 
 ### Keyboard Controls
@@ -144,8 +148,12 @@ The application runs up to 4 threads:
 ## Project Structure
 
 ```
-rtk_client.py        - Application entry point
+rtk_client.py              - Application entry point
+main.py                    - Convenience entry point (delegates to rtk_client.py)
 rtk_controller.py          - Component orchestrator
+demo_device.py             - Simulated GNSS device for demo mode
+demo_ntrip.py              - Simulated NTRIP client for demo mode
+data/demo.nmea             - NMEA replay data for demo mode
 rtk_state.py               - Thread-safe shared state
 gnss_device.py             - Serial communication with GNSS receiver
 module_profiles.py         - GNSS module profiles (LC29H, generic)
