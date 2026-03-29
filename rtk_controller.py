@@ -3,7 +3,7 @@
 import logging
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from gnss_device import GnssDevice
 from module_profiles import get_profile
@@ -37,10 +37,19 @@ class RtkController:
             self._state.add_ui_log_message(
                 f"Restored last pos: {pos.get('lat', 0):.4f}, {pos.get('lon', 0):.4f}"
             )
-        # Initialize components, passing the state and other dependencies
-        self._gnss_device = GnssDevice(config.serial_port, config.baud_rate, self._state, profile=self._profile)
-        self._nmea_parser = NmeaParser(self._state)
-        self._ntrip_client = NtripClient(config, self._state, self._gnss_device)
+        # Initialize components — use demo replacements when in demo mode
+        if config.demo:
+            from demo_device import DemoGnssDevice
+            from demo_ntrip import DemoNtripClient
+            self._gnss_device = DemoGnssDevice(state=self._state)
+            self._nmea_parser = NmeaParser(self._state)
+            self._ntrip_client = DemoNtripClient(self._state)
+            self._state.module_name = "Demo Mode"
+            logger.info("Demo mode: using simulated GNSS device and NTRIP client.")
+        else:
+            self._gnss_device = GnssDevice(config.serial_port, config.baud_rate, self._state, profile=self._profile)
+            self._nmea_parser = NmeaParser(self._state)
+            self._ntrip_client = NtripClient(config, self._state, self._gnss_device)
         # Main running flag for the application
         self._running = threading.Event()
         # Placeholder for the GNSS reading thread
@@ -155,7 +164,7 @@ class RtkController:
 
         logger.info("RTK Controller components stopped.")
 
-    def get_current_state(self) -> Dict[str, Any]:
+    def get_current_state(self) -> dict[str, Any]:
         """Provides safe access to the current state snapshot."""
         return self._state.get_state_snapshot()
 

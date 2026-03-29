@@ -5,7 +5,7 @@ import logging
 import threading
 from collections import Counter, deque
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from rtk_constants import *  # Import constants
 
@@ -20,7 +20,7 @@ class GnssState:
         self.default_lon: float = default_lon
         self.default_alt: float = default_alt
         # GNSS Data
-        self.position: Dict[str, float] = {"lat": 0.0, "lon": 0.0, "alt": 0.0}
+        self.position: dict[str, float] = {"lat": 0.0, "lon": 0.0, "alt": 0.0}
         self.status: str = "Initializing"
         self.rtk_status: str = "Unknown"
         self.fix_type: int = FIX_QUALITY_INVALID
@@ -39,8 +39,8 @@ class GnssState:
         self.firmware_version: str = "Unknown"
         self.module_name: str = "GNSS Receiver"
         # Satellite Tracking
-        self.satellites_info: Dict[str, Dict[str, Any]] = {} # Key: Talker-PRN
-        self.snr_stats: Dict[str, float] = {"min": 0, "max": 0, "avg": 0, "good_count": 0, "bad_count": 0}
+        self.satellites_info: dict[str, dict[str, Any]] = {} # Key: Talker-PRN
+        self.snr_stats: dict[str, float] = {"min": 0, "max": 0, "avg": 0, "good_count": 0, "bad_count": 0}
         self.satellite_systems: Counter = Counter()
         # NTRIP Status
         self.ntrip_connected: bool = False
@@ -72,7 +72,7 @@ class GnssState:
                     # This warning is now less likely for ntrip_next_reconnect_time
                     logger.warning(f"Attempted to update non-existent state variable: {key}")
 
-    def get_state_snapshot(self) -> Dict[str, Any]:
+    def get_state_snapshot(self) -> dict[str, Any]:
         """Return a deep copy of the current state in a thread-safe manner."""
         with self._lock:
             snapshot = {}

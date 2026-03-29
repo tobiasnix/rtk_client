@@ -3,7 +3,7 @@
 import logging
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any
 
 import pynmea2
 
@@ -19,6 +19,24 @@ class NmeaParser:
         # Temporary storage for GSV sequence building
         self._current_gsv_sequence_sats = {}
         self._current_gsv_systems = Counter()
+
+    def parse(self, line: str) -> None:
+        """Parses an NMEA sentence string and dispatches to the appropriate handler."""
+        line = line.strip()
+        if not line:
+            return
+        try:
+            msg = pynmea2.parse(line)
+        except pynmea2.ParseError as e:
+            logger.warning(f"Failed to parse NMEA sentence: {e}")
+            return
+
+        if isinstance(msg, pynmea2.types.talker.GGA):
+            self._parse_gga(msg)
+        elif isinstance(msg, pynmea2.types.talker.GSV):
+            self._parse_gsv(msg)
+        elif isinstance(msg, pynmea2.types.talker.GSA):
+            self._parse_gsa(msg)
 
     def _get_fix_status_string(self, fix_type: int) -> str:
         """Maps fix type integer to a status string."""
@@ -45,7 +63,7 @@ class NmeaParser:
              new_fix_type = FIX_QUALITY_INVALID
 
         now = datetime.now(timezone.utc)
-        updates: Dict[str, Any] = {'fix_type': new_fix_type}
+        updates: dict[str, Any] = {'fix_type': new_fix_type}
         has_valid_coords = False
 
         # Check for valid latitude and longitude AND if the fix is considered valid
@@ -220,7 +238,7 @@ class NmeaParser:
             # self._current_gsv_sequence_sats = {}
             # self._current_gsv_systems = Counter()
 
-    def _calculate_snr_stats(self, satellites_info: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
+    def _calculate_snr_stats(self, satellites_info: dict[str, dict[str, Any]]) -> dict[str, float]:
         """Calculates SNR statistics based on provided satellite info."""
         # Extract SNRs, filtering out those with 0 or None SNR
         snrs = [sat['snr'] for sat in satellites_info.values() if sat.get('snr') and sat['snr'] > 0]
@@ -295,10 +313,9 @@ class NmeaParser:
                        updated_count += 1
                 # If the satellite was NOT in the GSA message, AND the GSA talker matches the satellite's system
                 # (or GSA talker is 'GN'), mark it as inactive.
-                elif is_relevant_talker:
-                     if current_status: # Mark inactive only if previously active
-                        satellites_info_state[key]['active'] = False
-                        deactivated_count += 1
+                elif is_relevant_talker and current_status: # Mark inactive only if previously active
+                   satellites_info_state[key]['active'] = False
+                   deactivated_count += 1
 
         # logger.debug(f"GSA ({talker}): Marked {updated_count} active, {deactivated_count} inactive.")
         # No self._state.update() needed here if we modified the state dict directly (inside lock if needed)

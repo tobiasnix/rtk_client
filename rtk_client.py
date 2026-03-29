@@ -1,4 +1,4 @@
-# rtk_client_final.py
+# rtk_client.py - Application entry point
 
 import argparse
 import curses
@@ -84,7 +84,7 @@ def main_curses(stdscr, args: argparse.Namespace):
             if not controller.start():
                 logger.error("RtkController failed to start. Check previous logs.")
                 # Attempt to show error in curses before exiting if possible
-                if status_display_obj and stdscr and not stdscr.isendwin():
+                if status_display_obj and stdscr and not curses.isendwin():
                     err_msg = "Error: RTK Controller failed to start. Check logs. Press key."
                     color = getattr(status_display_obj, 'COLOR_RED', curses.A_NORMAL)
                     attr = getattr(status_display_obj, 'ATTR_BOLD', curses.A_NORMAL)
@@ -98,7 +98,7 @@ def main_curses(stdscr, args: argparse.Namespace):
             logger.info("RtkController started successfully.")
         except Exception as start_err:
             logger.critical(f"Unexpected exception during RtkController start: {start_err}", exc_info=True)
-            if status_display_obj and stdscr and not stdscr.isendwin():
+            if status_display_obj and stdscr and not curses.isendwin():
                  # Attempt to show fatal error
                  err_msg = f"FATAL: Controller start failed: {start_err}. Check logs. Press key."
                  color = getattr(status_display_obj, 'COLOR_RED', curses.A_NORMAL)
@@ -195,7 +195,7 @@ def main_curses(stdscr, args: argparse.Namespace):
         shutdown_requested = True # Ensure shutdown sequence runs
         # Try a final message attempt *if* curses was somewhat initialized
         try:
-            if stdscr and not stdscr.isendwin():
+            if stdscr and not curses.isendwin():
                  color = curses.color_pair(3) | curses.A_BOLD if curses.has_colors() else curses.A_BOLD
                  err_msg = f"FATAL ERROR: {e}. Check log. Press key."
                  max_y, max_x = stdscr.getmaxyx()

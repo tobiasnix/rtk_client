@@ -1,6 +1,5 @@
 # rtk_constants.py - Shared constants for the RTK client application
 
-from typing import Dict
 
 # --- Serial/NTRIP Defaults ---
 DEFAULT_SERIAL_PORT = "/dev/ttyUSB0"
@@ -53,7 +52,7 @@ RTCM_MSG_TYPE_QZSS_MSM7 = 1117
 RTCM_MSG_TYPE_ARP_1005 = 1005
 RTCM_MSG_TYPE_ARP_1006 = 1006 # Alternative with height
 
-IMPORTANT_RTCM_TYPES: Dict[int, str] = {
+IMPORTANT_RTCM_TYPES: dict[int, str] = {
     RTCM_MSG_TYPE_GPS_MSM7: "GPS MSM7 (1077)",
     RTCM_MSG_TYPE_GLONASS_MSM7: "GLONASS MSM7 (1087)",
     RTCM_MSG_TYPE_GALILEO_MSM7: "Galileo MSM7 (1097)",

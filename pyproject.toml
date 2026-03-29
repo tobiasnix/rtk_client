@@ -3,8 +3,15 @@ line-length = 120
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-ignore = ["E501", "F403", "F405", "E722", "E701"]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501", "F403", "F405", "E701"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

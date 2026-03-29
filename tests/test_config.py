@@ -187,9 +187,8 @@ class TestParseArgumentsWithConfig:
         """Test that referencing a nonexistent config file raises an error."""
         from rtk_config import parse_arguments
 
-        with patch("sys.argv", ["prog", "--config", "/nonexistent/config.yaml"]):
-            with pytest.raises(FileNotFoundError):
-                parse_arguments()
+        with patch("sys.argv", ["prog", "--config", "/nonexistent/config.yaml"]), pytest.raises(FileNotFoundError):
+            parse_arguments()
 
     def test_no_config_flag_uses_defaults(self):
         """Test that without --config, default values are used."""

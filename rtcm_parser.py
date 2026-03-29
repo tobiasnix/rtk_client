@@ -1,12 +1,11 @@
 """RTCM3 message type extraction from binary data."""
 
 import logging
-from typing import List
 
 logger = logging.getLogger(__name__)
 
 
-def extract_rtcm_message_types(data: bytes) -> List[int]:
+def extract_rtcm_message_types(data: bytes) -> list[int]:
     """Extracts RTCM3 message types from received binary data."""
     types_found = []
     i = 0

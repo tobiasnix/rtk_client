@@ -1,5 +1,6 @@
 # status_display.py - Redesigned curses-based status display
 
+import contextlib
 import curses
 import logging
 from collections import Counter, deque
@@ -155,10 +156,8 @@ class StatusDisplay:
 
             # Draw the separator line
             for y in range(header_h, msg_y):
-                try:
+                with contextlib.suppress(curses.error):
                     self._stdscr.addch(y, sep_x, curses.ACS_VLINE)
-                except curses.error:
-                    pass  # Ignore errors at screen edges
 
             # Add connecting characters at top and bottom
             try:
@@ -472,7 +471,7 @@ class StatusDisplay:
         sorted_sats = sorted(satellites.items(), key=sort_key)
 
         # Display satellites
-        for sat_key, sat in sorted_sats:
+        for _sat_key, sat in sorted_sats:
             if y >= max_y - 1:
                 # No more room, show truncation indicator
                 self._addstr_safe(win, max_y - 2, x, "...more satellites...", self._get_color("yellow"))
@@ -695,13 +694,10 @@ class StatusDisplay:
         self._logger.info("Full redraw triggered")
 
     def close(self):
-        """Clean up curses environment if needed."""
-        if self._stdscr and not self._stdscr.isendwin():
-            try:
-                curses.nocbreak()
-                self._stdscr.keypad(False)
-                curses.echo()
-                curses.endwin()
-                self._logger.info("Curses environment closed")
-            except Exception as e:
-                self._logger.error(f"Error closing curses: {e}")
+        """Clean up display resources. Does NOT call endwin() — curses.wrapper() handles that."""
+        self._header_win = None
+        self._info_win = None
+        self._sat_win = None
+        self._msg_win = None
+        self._stdscr = None
+        self._logger.info("Curses environment closed")

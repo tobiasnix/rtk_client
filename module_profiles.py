@@ -97,10 +97,7 @@ class LC29HProfile(ModuleProfile):
             return False
         # Extract the command ID: strip the "PAIR" prefix to get the numeric part
         cmd_name = command.split(",")[0]
-        if cmd_name.startswith("PAIR"):
-            cmd_id = cmd_name[4:]
-        else:
-            cmd_id = cmd_name
+        cmd_id = cmd_name[4:] if cmd_name.startswith("PAIR") else cmd_name
         ack_prefix = f"$PAIR001,{cmd_id},0"
         return response.startswith(ack_prefix)
 

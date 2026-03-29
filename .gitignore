@@ -2,3 +2,4 @@
 __pycache__/
 *.pyc
 .rtk_state.json
+.env

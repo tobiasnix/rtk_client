@@ -38,7 +38,7 @@ pip install -r requirements-dev.txt
 ## Usage
 
 ```bash
-python3 rtk_client_final.py [OPTIONS]
+python3 rtk_client.py [OPTIONS]
 ```
 
 ### Options
@@ -68,7 +68,7 @@ python3 rtk_client_final.py [OPTIONS]
 Instead of many CLI arguments, use a YAML config file:
 
 ```bash
-python3 rtk_client_final.py --config config.yaml
+python3 rtk_client.py --config config.yaml
 ```
 
 See `config.example.yaml` for the full structure. CLI arguments override config file values.
@@ -79,16 +79,16 @@ See `config.example.yaml` for the full structure. CLI arguments override config 
 # With environment variables
 export NTRIP_USER=myuser
 export NTRIP_PASS=mypass
-python3 rtk_client_final.py --port /dev/ttyUSB0 --ntrip-server caster.example.com
+python3 rtk_client.py --port /dev/ttyUSB0 --ntrip-server caster.example.com
 
 # With config file
-python3 rtk_client_final.py --config config.yaml
+python3 rtk_client.py --config config.yaml
 
 # Auto-discover serial port + generic NMEA module
-python3 rtk_client_final.py --port auto --gnss-module generic
+python3 rtk_client.py --port auto --gnss-module generic
 
 # With position logging
-python3 rtk_client_final.py --position-log positions.csv --position-log-interval 2.0
+python3 rtk_client.py --position-log positions.csv --position-log-interval 2.0
 ```
 
 ### Keyboard Controls
@@ -144,7 +144,7 @@ The application runs up to 4 threads:
 ## Project Structure
 
 ```
-rtk_client_final.py        - Application entry point
+rtk_client.py        - Application entry point
 rtk_controller.py          - Component orchestrator
 rtk_state.py               - Thread-safe shared state
 gnss_device.py             - Serial communication with GNSS receiver

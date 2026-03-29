@@ -39,10 +39,12 @@ class Config:
         self.debug: bool = args.debug
         self.position_log: Optional[str] = getattr(args, 'position_log', None)
         self.position_log_interval: float = getattr(args, 'position_log_interval', 5.0)
+        self.demo: bool = getattr(args, 'demo', False)
 
         # Note: Log level setup is handled in main.py after Config is created
         logger.info("Configuration loaded.")
-        logger.debug(f"Config details: {self.__dict__}")
+        safe_dict = {k: ("***" if "password" in k and v else v) for k, v in self.__dict__.items()}
+        logger.debug(f"Config details: {safe_dict}")
 
 
 def _load_config_file(path: str) -> dict:
@@ -130,6 +132,9 @@ def parse_arguments() -> argparse.Namespace:
     log_group.add_argument('--debug', action='store_true', help='Enable debug level logging to file')
     log_group.add_argument('--position-log', default=None, help='Log positions to CSV file')
     log_group.add_argument('--position-log-interval', type=float, default=5.0, help='Position log interval in seconds')
+
+    # Demo mode
+    parser.add_argument('--demo', action='store_true', help='Run in demo mode with simulated GNSS data')
 
     args = parser.parse_args()
 

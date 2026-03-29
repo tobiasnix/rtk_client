@@ -4,14 +4,14 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 STATE_FILE = ".rtk_state.json"
 
 
-def save_state(state_snapshot: Dict[str, Any], filename: str = STATE_FILE) -> bool:
+def save_state(state_snapshot: dict[str, Any], filename: str = STATE_FILE) -> bool:
     """Save relevant state fields to JSON on shutdown."""
     try:
         data = {
@@ -34,7 +34,7 @@ def save_state(state_snapshot: Dict[str, Any], filename: str = STATE_FILE) -> bo
         return False
 
 
-def load_state(filename: str = STATE_FILE) -> Optional[Dict[str, Any]]:
+def load_state(filename: str = STATE_FILE) -> Optional[dict[str, Any]]:
     """Load previously saved state from JSON. Returns None if not available."""
     path = Path(filename)
     if not path.exists():

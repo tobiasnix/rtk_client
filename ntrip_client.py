@@ -216,7 +216,8 @@ class NtripClient:
                 "\r\n"
             ]
             request = "\r\n".join(request_lines)
-            logger.debug(f"Sending NTRIP request:\n{request.strip()}")
+            log_request = request.replace(f"Authorization: Basic {auth_b64}", "Authorization: Basic ***")
+            logger.debug(f"Sending NTRIP request:\n{log_request.strip()}")
             self._socket.sendall(request.encode('ascii'))
 
             # Read Response Headers robustly
