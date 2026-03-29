@@ -5,6 +5,7 @@ import curses
 import logging
 from collections import Counter, deque
 from datetime import datetime, timezone
+from typing import Optional
 
 from rtk_config import Config
 from rtk_constants import *
@@ -36,6 +37,14 @@ class StatusDisplay:
         self.MSG_HEIGHT = 7
         self.MIN_WIDTH = 50
         self.MIN_HEIGHT = 15
+
+        # Panel focus and scrolling
+        self.FOCUSABLE_PANELS = ["sat", "msg"]
+        self._focused_panel: Optional[str] = None  # None = no focus
+        self._sat_scroll_offset = 0
+        self._msg_scroll_offset = 0
+        self._sat_selected_idx = 0  # cursor position in sat panel
+        self._last_sorted_sats: list = []  # cached for detail view
 
     def _setup_curses(self, stdscr):
         """Set up basic curses environment."""
@@ -428,9 +437,11 @@ class StatusDisplay:
         # Start position
         y, x = 1, 2
 
-        # Draw title
-        title = "[Satellites in View]"
-        self._addstr_safe(win, y, x, title, self._get_color("yellow"))
+        # Draw title with focus indicator
+        is_focused = (self._focused_panel == "sat")
+        title = "▶ Satellites in View" if is_focused else "[Satellites in View]"
+        title_color = "green" if is_focused else "yellow"
+        self._addstr_safe(win, y, x, title, self._get_color(title_color))
         y += 1
 
         # Define column format and widths
@@ -469,13 +480,30 @@ class StatusDisplay:
             return (sat_data.get('system', 'zzz'), prn)
 
         sorted_sats = sorted(satellites.items(), key=sort_key)
+        self._last_sorted_sats = sorted_sats  # cache for detail view
+
+        # Clamp selection and calculate scroll window
+        total_sats = len(sorted_sats)
+        available_rows = max_y - y - 1  # rows available for satellite data
+        if total_sats > 0:
+            self._sat_selected_idx = max(0, min(self._sat_selected_idx, total_sats - 1))
+        # Auto-scroll to keep selection visible
+        if self._sat_selected_idx < self._sat_scroll_offset:
+            self._sat_scroll_offset = self._sat_selected_idx
+        elif self._sat_selected_idx >= self._sat_scroll_offset + available_rows:
+            self._sat_scroll_offset = self._sat_selected_idx - available_rows + 1
+
+        is_focused = (self._focused_panel == "sat")
+        visible_sats = sorted_sats[self._sat_scroll_offset:self._sat_scroll_offset + available_rows]
+
+        # Show scroll indicator in title
+        if total_sats > available_rows:
+            scroll_info = f" [{self._sat_scroll_offset + 1}-{min(self._sat_scroll_offset + available_rows, total_sats)}/{total_sats}]"
+            self._addstr_safe(win, 1, x + len(title) + 1, scroll_info, self._get_color("dim"))
 
         # Display satellites
-        for _sat_key, sat in sorted_sats:
-            if y >= max_y - 1:
-                # No more room, show truncation indicator
-                self._addstr_safe(win, max_y - 2, x, "...more satellites...", self._get_color("yellow"))
-                break
+        for vis_idx, (_sat_key, sat) in enumerate(visible_sats):
+            abs_idx = self._sat_scroll_offset + vis_idx
 
             # Extract satellite data
             prn = sat.get('prn', '??')
@@ -519,25 +547,31 @@ class StatusDisplay:
             azim_str = f"{azim if azim is not None else '-':>3}"
             use_str = f"{'[*]':<3}" if active else f"{'[ ]':<3}"
 
+            # Highlight selected row when focused
+            is_selected = is_focused and abs_idx == self._sat_selected_idx
+            row_attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
+
             # Draw each field with appropriate color
             col_x = x
-            self._addstr_safe(win, y, col_x, prn_str)
+            self._addstr_safe(win, y, col_x, prn_str, row_attr)
             col_x += 4
 
-            self._addstr_safe(win, y, col_x, sys_str, self._get_color(sys_color))
+            attr = self._get_color(sys_color) | (curses.A_REVERSE if is_selected else 0)
+            self._addstr_safe(win, y, col_x, sys_str, attr)
             col_x += 4
 
-            self._addstr_safe(win, y, col_x, snr_str, self._get_color(snr_color))
+            attr = self._get_color(snr_color) | (curses.A_REVERSE if is_selected else 0)
+            self._addstr_safe(win, y, col_x, snr_str, attr)
             col_x += 5
 
-            self._addstr_safe(win, y, col_x, elev_str)
+            self._addstr_safe(win, y, col_x, elev_str, row_attr)
             col_x += 4
 
-            self._addstr_safe(win, y, col_x, azim_str)
+            self._addstr_safe(win, y, col_x, azim_str, row_attr)
             col_x += 4
 
-            use_attr = self._get_color("bold") if active else self._get_color("normal")
-            self._addstr_safe(win, y, col_x, use_str, use_attr)
+            use_base = self._get_color("bold") if active else self._get_color("normal")
+            self._addstr_safe(win, y, col_x, use_str, use_base | (curses.A_REVERSE if is_selected else 0))
 
             y += 1
 
@@ -556,9 +590,11 @@ class StatusDisplay:
         if max_y < 3 or max_x < 20:
             return  # Too small
 
-        # Draw title
-        title = "[Messages]"
-        self._addstr_safe(win, 0, 2, title, self._get_color("yellow"))
+        # Draw title with focus indicator
+        is_focused = (self._focused_panel == "msg")
+        title = "▶ Messages" if is_focused else "[Messages]"
+        title_color = "green" if is_focused else "yellow"
+        self._addstr_safe(win, 0, 2, title, self._get_color(title_color))
 
         # Get messages
         messages = state.get('ui_log_messages', deque())
@@ -571,11 +607,22 @@ class StatusDisplay:
         # Adjust available_lines to ensure no overflow
         available_lines = max(1, available_lines - 1)  # Reserve one more line as safety margin
 
-        start_idx = max(0, total_msgs - available_lines)
+        is_focused = (self._focused_panel == "msg")
+
+        # When focused, allow manual scroll; otherwise auto-scroll to bottom
+        if is_focused and self._msg_scroll_offset > 0:
+            # Clamp scroll offset
+            max_scroll = max(0, total_msgs - available_lines)
+            self._msg_scroll_offset = min(self._msg_scroll_offset, max_scroll)
+            start_idx = max(0, total_msgs - available_lines - self._msg_scroll_offset)
+        else:
+            start_idx = max(0, total_msgs - available_lines)
+            self._msg_scroll_offset = 0
 
         # Show indicator for hidden messages
-        if start_idx > 0:
-            indicator = f"[+{start_idx}]"
+        hidden = start_idx
+        if hidden > 0:
+            indicator = f"[+{hidden}]"
             indicator_x = max_x - len(indicator) - 2
             self._addstr_safe(win, 0, indicator_x, indicator, self._get_color("bold"))
 
@@ -664,9 +711,14 @@ class StatusDisplay:
         help_lines = [
             "Keyboard Shortcuts",
             "",
-            "  q  -  Quit application",
-            "  r  -  Reset NTRIP connection",
-            "  ?  -  Show this help",
+            "  q      -  Quit application",
+            "  r      -  Reset NTRIP connection",
+            "  ?      -  Show this help",
+            "",
+            "  Tab    -  Cycle panel focus (Sat/Msg/None)",
+            "  Esc    -  Clear panel focus",
+            "  Up/Dn  -  Scroll in focused panel",
+            "  Enter  -  Satellite detail (when Sat focused)",
             "",
             "Press any key to close",
         ]
@@ -684,6 +736,106 @@ class StatusDisplay:
             stdscr.nodelay(False)
             stdscr.getch()  # Wait for any key
             stdscr.nodelay(True)
+            self.trigger_redraw()
+        except curses.error:
+            pass
+
+    def handle_key(self, key: int) -> bool:
+        """Handle navigation keys. Returns True if the key was consumed."""
+        if key == ord('\t'):  # Tab — cycle focus
+            if self._focused_panel is None:
+                self._focused_panel = self.FOCUSABLE_PANELS[0]
+            else:
+                idx = self.FOCUSABLE_PANELS.index(self._focused_panel)
+                next_idx = (idx + 1) % (len(self.FOCUSABLE_PANELS) + 1)
+                self._focused_panel = self.FOCUSABLE_PANELS[next_idx] if next_idx < len(self.FOCUSABLE_PANELS) else None
+            return True
+
+        if key == 27:  # Escape — clear focus
+            if self._focused_panel is not None:
+                self._focused_panel = None
+                return True
+            return False
+
+        if self._focused_panel == "sat":
+            return self._handle_sat_key(key)
+        elif self._focused_panel == "msg":
+            return self._handle_msg_key(key)
+
+        return False
+
+    def _handle_sat_key(self, key: int) -> bool:
+        """Handle keys when satellite panel is focused."""
+        total = len(self._last_sorted_sats)
+        if key == curses.KEY_UP and self._sat_selected_idx > 0:
+            self._sat_selected_idx -= 1
+            return True
+        elif key == curses.KEY_DOWN and self._sat_selected_idx < total - 1:
+            self._sat_selected_idx += 1
+            return True
+        elif key in (curses.KEY_ENTER, ord('\n'), ord('\r')):
+            self._show_satellite_detail()
+            return True
+        return False
+
+    def _handle_msg_key(self, key: int) -> bool:
+        """Handle keys when message panel is focused."""
+        if key == curses.KEY_UP:
+            self._msg_scroll_offset = max(0, self._msg_scroll_offset - 1)
+            return True
+        elif key == curses.KEY_DOWN:
+            self._msg_scroll_offset += 1
+            return True
+        elif key == curses.KEY_HOME:
+            self._msg_scroll_offset = 0
+            return True
+        return False
+
+    def _show_satellite_detail(self) -> None:
+        """Shows a detail overlay for the selected satellite."""
+        if not self._last_sorted_sats or not self._stdscr:
+            return
+        idx = self._sat_selected_idx
+        if idx >= len(self._last_sorted_sats):
+            return
+
+        _key, sat = self._last_sorted_sats[idx]
+        prn = sat.get('prn', '??')
+        system = sat.get('system', 'Unknown')
+        snr = sat.get('snr', 0)
+        elev = sat.get('elevation', '-')
+        azim = sat.get('azimuth', '-')
+        active = sat.get('active', False)
+
+        lines = [
+            f"Satellite Detail: {system} PRN {prn}",
+            "",
+            f"  System:      {system}",
+            f"  PRN:         {prn}",
+            f"  SNR:         {snr} dBHz" if snr else "  SNR:         No signal",
+            f"  Elevation:   {elev}°" if elev != '-' else "  Elevation:   Unknown",
+            f"  Azimuth:     {azim}°" if azim != '-' else "  Azimuth:     Unknown",
+            f"  In Fix:      {'Yes' if active else 'No'}",
+            "",
+            "Press any key to close",
+        ]
+
+        max_y, max_x = self._stdscr.getmaxyx()
+        h = len(lines) + 4
+        w = max(len(line) for line in lines) + 6
+        y = max(0, (max_y - h) // 2)
+        x = max(0, (max_x - w) // 2)
+
+        try:
+            win = curses.newwin(h, w, y, x)
+            win.box()
+            for i, line in enumerate(lines):
+                attr = self._get_color("bold") if i == 0 else curses.A_NORMAL
+                self._addstr_safe(win, i + 2, 3, line, attr)
+            win.refresh()
+            self._stdscr.nodelay(False)
+            self._stdscr.getch()
+            self._stdscr.nodelay(True)
             self.trigger_redraw()
         except curses.error:
             pass

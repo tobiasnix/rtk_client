@@ -41,7 +41,10 @@ class RtkController:
         if config.demo:
             from demo_device import DemoGnssDevice
             from demo_ntrip import DemoNtripClient
-            self._gnss_device: Any = DemoGnssDevice(state=self._state)
+            demo_kwargs: dict[str, Any] = {"state": self._state}
+            if config.demo_file:
+                demo_kwargs["nmea_file"] = config.demo_file
+            self._gnss_device: Any = DemoGnssDevice(**demo_kwargs)
             self._nmea_parser = NmeaParser(self._state)
             self._ntrip_client: Any = DemoNtripClient(self._state)
             self._state.module_name = "Demo Mode"

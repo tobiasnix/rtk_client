@@ -144,10 +144,8 @@ def main_curses(stdscr, args: argparse.Namespace):
                      elif key == ord('?'):
                           if status_display_obj:
                                status_display_obj.show_help_overlay(stdscr)
-                     else:
-                          # Log other key presses if needed for debugging
-                          # logger.debug(f"Key pressed: {key}")
-                          pass
+                     elif status_display_obj and status_display_obj.handle_key(key):
+                          pass  # Key was consumed by panel navigation
 
                 # --- Display Update ---
                 if status_display_obj:

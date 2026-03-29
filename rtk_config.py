@@ -39,7 +39,9 @@ class Config:
         self.debug: bool = args.debug
         self.position_log: Optional[str] = getattr(args, 'position_log', None)
         self.position_log_interval: float = getattr(args, 'position_log_interval', 5.0)
-        self.demo: bool = getattr(args, 'demo', False)
+        demo_val = getattr(args, 'demo', False)
+        self.demo: bool = bool(demo_val)
+        self.demo_file: Optional[str] = demo_val if isinstance(demo_val, str) else None
 
         # Note: Log level setup is handled in main.py after Config is created
         logger.info("Configuration loaded.")
@@ -134,7 +136,9 @@ def parse_arguments() -> argparse.Namespace:
     log_group.add_argument('--position-log-interval', type=float, default=5.0, help='Position log interval in seconds')
 
     # Demo mode
-    parser.add_argument('--demo', action='store_true', help='Run in demo mode with simulated GNSS data')
+    parser.add_argument('--demo', nargs='?', const=True, default=False,
+                        metavar='NMEA_FILE',
+                        help='Run in demo mode (optionally with a custom NMEA file)')
 
     args = parser.parse_args()
 
