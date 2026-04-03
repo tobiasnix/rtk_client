@@ -102,6 +102,9 @@ python3 rtk_client.py --demo
 | `q` | Quit application |
 | `r` | Reset NTRIP connection |
 | `?` | Show help overlay |
+| `Tab` | Cycle panel focus (Satellite / Messages / None) |
+| `Up`/`Down` | Scroll within focused panel |
+| `Enter` | Show satellite detail (when Satellite panel focused) |
 
 ## Supported Modules
 
@@ -181,7 +184,7 @@ Log files use rotation (5 MB max, 3 backups):
 # Run linter
 ruff check .
 
-# Run tests (141 tests)
+# Run tests (302 tests)
 pytest -v
 ```
 
@@ -210,4 +213,4 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## License
 
-All rights reserved.
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
