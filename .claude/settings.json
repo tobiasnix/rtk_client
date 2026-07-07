@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make setup)",
+      "Bash(make run)",
+      "Bash(make verify-fast)",
+      "Bash(make verify-full)",
+      "Bash(make build)",
+      "Bash(make deps-check)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch)",
+      "Bash(python -m pytest:*)",
+      "Bash(.venv/bin/pytest:*)",
+      "Bash(.venv/bin/ruff:*)",
+      "Bash(.venv/bin/mypy:*)"
+    ],
+    "ask": [
+      "Bash(gh issue create:*)",
+      "Bash(gh pr create:*)",
+      "Bash(make deps-lock)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(rm -rf:*)"
+    ]
+  },
+  "env": {
+    "VERB_RUNNER": "make"
+  }
+}
