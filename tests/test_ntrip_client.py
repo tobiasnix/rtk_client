@@ -61,11 +61,11 @@ class TestNtripConnectionState:
 
 class TestExtractRtcmMessageTypes:
     def test_empty_data(self):
-        result = extract_rtcm_message_types(b'')
+        result = extract_rtcm_message_types(b"")
         assert result == []
 
     def test_too_short_data(self):
-        result = extract_rtcm_message_types(b'\xD3\x00')
+        result = extract_rtcm_message_types(b"\xd3\x00")
         assert result == []
 
     def test_valid_rtcm3_message(self):
@@ -97,7 +97,7 @@ class TestCalculateChecksum:
     def test_simple_sentence(self):
         result = GnssDevice._calculate_checksum("GNGGA,123456.00,4006.56,N,00709.27,W,1,08,1.0,100.0,M,-0.0,M,,")
         assert len(result) == 2
-        assert all(c in '0123456789ABCDEF' for c in result)
+        assert all(c in "0123456789ABCDEF" for c in result)
 
     def test_strips_dollar_sign(self):
         r1 = GnssDevice._calculate_checksum("$GPGGA,data")
@@ -147,7 +147,6 @@ class TestNtripConnectionStateTransitions:
         state.increment_reconnect_attempts()
         state.set_state(NtripConnectionState.GAVE_UP, "Max retries")
         assert state.has_given_up()
-
 
 
 def _make_config(**overrides):
@@ -357,7 +356,7 @@ class TestHandleRtcmData:
     def test_valid_rtcm_forwarded(self):
         """Valid data should be forwarded via gnss_device.write_data."""
         client, _, state, gnss_device = _make_client()
-        data = b"\xD3\x00\x04\x43\x50\x00\x00" + b"\x00" * 3
+        data = b"\xd3\x00\x04\x43\x50\x00\x00" + b"\x00" * 3
         gnss_device.write_data.return_value = len(data)
 
         client._handle_rtcm_data(data)
@@ -367,7 +366,7 @@ class TestHandleRtcmData:
     def test_stats_updated(self):
         """total_bytes_received should be incremented after successful write."""
         client, _, state, gnss_device = _make_client()
-        data = b"\xAB" * 50
+        data = b"\xab" * 50
         gnss_device.write_data.return_value = len(data)
 
         assert client._stats["total_bytes_received"] == 0
@@ -386,7 +385,7 @@ class TestHandleRtcmData:
         """If write_data returns None the method should log but not crash."""
         client, _, _, gnss_device = _make_client()
         gnss_device.write_data.return_value = None
-        data = b"\xAB" * 10
+        data = b"\xab" * 10
 
         # Should not raise
         client._handle_rtcm_data(data)

@@ -37,7 +37,7 @@ class TestGnssStateUpdate:
         state = GnssState(0.0, 0.0, 0.0)
         # Should not raise, just log a warning
         state.update(nonexistent_field=42)
-        assert not hasattr(state, 'nonexistent_field')
+        assert not hasattr(state, "nonexistent_field")
 
 
 class TestGetStateSnapshot:
@@ -49,7 +49,7 @@ class TestGetStateSnapshot:
     def test_snapshot_excludes_lock(self):
         state = GnssState(0.0, 0.0, 0.0)
         snapshot = state.get_state_snapshot()
-        assert '_lock' not in snapshot
+        assert "_lock" not in snapshot
 
     def test_snapshot_is_deep_copy(self):
         state = GnssState(0.0, 0.0, 0.0)
@@ -57,23 +57,21 @@ class TestGetStateSnapshot:
         snapshot = state.get_state_snapshot()
 
         # Modify the snapshot's position dict
-        snapshot['position']['lat'] = 99.0
+        snapshot["position"]["lat"] = 99.0
 
         # Original state should be unchanged
-        assert state.position['lat'] == 1.0
+        assert state.position["lat"] == 1.0
 
     def test_snapshot_satellites_deep_copy(self):
         state = GnssState(0.0, 0.0, 0.0)
-        state.update(satellites_info={
-            "GP-1": {"prn": "1", "snr": 40, "active": True}
-        })
+        state.update(satellites_info={"GP-1": {"prn": "1", "snr": 40, "active": True}})
         snapshot = state.get_state_snapshot()
 
         # Modify the snapshot
-        snapshot['satellites_info']['GP-1']['snr'] = 0
+        snapshot["satellites_info"]["GP-1"]["snr"] = 0
 
         # Original should be unchanged
-        assert state.satellites_info['GP-1']['snr'] == 40
+        assert state.satellites_info["GP-1"]["snr"] == 40
 
 
 class TestAddUiLogMessage:

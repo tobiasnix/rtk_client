@@ -43,9 +43,7 @@ def load_state(filename: str = STATE_FILE) -> Optional[dict[str, Any]]:
     try:
         with open(path) as f:
             data: dict[str, Any] = json.load(f)
-        logger.info(
-            f"Loaded saved state from {filename} (saved: {data.get('saved_at', 'unknown')})"
-        )
+        logger.info(f"Loaded saved state from {filename} (saved: {data.get('saved_at', 'unknown')})")
         return data
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"Failed to load saved state: {e}")

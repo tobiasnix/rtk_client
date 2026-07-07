@@ -10,7 +10,7 @@ from rtk_constants import (
 
 class TestVersion:
     def test_version_format(self):
-        parts = __version__.split('.')
+        parts = __version__.split(".")
         assert len(parts) == 3
         assert all(p.isdigit() for p in parts)
 

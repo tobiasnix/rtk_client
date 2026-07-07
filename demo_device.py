@@ -89,10 +89,10 @@ class DemoGnssDevice:
     def _calculate_checksum(sentence: str) -> str:
         """NMEA checksum calculation (for interface compatibility)."""
         checksum = 0
-        if sentence.startswith('$'):
+        if sentence.startswith("$"):
             sentence = sentence[1:]
-        if '*' in sentence:
-            sentence = sentence.split('*')[0]
+        if "*" in sentence:
+            sentence = sentence.split("*")[0]
         for char in sentence:
             checksum ^= ord(char)
         return f"{checksum:02X}"

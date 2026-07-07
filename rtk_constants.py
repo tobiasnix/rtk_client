@@ -4,27 +4,27 @@
 # --- Serial/NTRIP Defaults ---
 DEFAULT_SERIAL_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD_RATE = 115200
-DEFAULT_NTRIP_SERVER = "193.137.94.71" # Example server
+DEFAULT_NTRIP_SERVER = "193.137.94.71"  # Example server
 DEFAULT_NTRIP_PORT = 2101
-DEFAULT_NTRIP_MOUNTPOINT = "PNM1" # Example mountpoint
+DEFAULT_NTRIP_MOUNTPOINT = "PNM1"  # Example mountpoint
 DEFAULT_NTRIP_USERNAME = ""
 DEFAULT_NTRIP_PASSWORD = ""
 DEFAULT_NTRIP_TLS = False
 
 # --- Fallback Position ---
-DEFAULT_LAT = 40.10939918 # Fallback Latitude
-DEFAULT_LON = -7.15450152 # Fallback Longitude
-DEFAULT_ALT = 476.68    # Fallback Altitude
-DEFAULT_HDOP = 99.99    # Default/Invalid HDOP value according to Spec V1.4
+DEFAULT_LAT = 40.10939918  # Fallback Latitude
+DEFAULT_LON = -7.15450152  # Fallback Longitude
+DEFAULT_ALT = 476.68  # Fallback Altitude
+DEFAULT_HDOP = 99.99  # Default/Invalid HDOP value according to Spec V1.4
 
 # --- Timing and Intervals ---
 NTRIP_TIMEOUT = 10.0  # seconds for connection/response
-NTRIP_GGA_INTERVAL = 10.0 # seconds between sending GGA
-NTRIP_MAX_RECONNECT_TIMEOUT = 60.0 # seconds max backoff
-NTRIP_INITIAL_RECONNECT_TIMEOUT = 5.0 # seconds initial backoff
-NTRIP_DATA_TIMEOUT = 60.0 # seconds - reconnect if no data received
-SERIAL_TIMEOUT = 1.0 # seconds for serial read/write
-STATUS_UPDATE_INTERVAL = 1.0 # seconds for UI refresh
+NTRIP_GGA_INTERVAL = 10.0  # seconds between sending GGA
+NTRIP_MAX_RECONNECT_TIMEOUT = 60.0  # seconds max backoff
+NTRIP_INITIAL_RECONNECT_TIMEOUT = 5.0  # seconds initial backoff
+NTRIP_DATA_TIMEOUT = 60.0  # seconds - reconnect if no data received
+SERIAL_TIMEOUT = 1.0  # seconds for serial read/write
+STATUS_UPDATE_INTERVAL = 1.0  # seconds for UI refresh
 
 # --- NTRIP Retry Limit ---
 MAX_NTRIP_RETRIES = 5  # Stop trying after this many consecutive failures
@@ -50,14 +50,14 @@ RTCM_MSG_TYPE_GALILEO_MSM7 = 1097
 RTCM_MSG_TYPE_BDS_MSM7 = 1127
 RTCM_MSG_TYPE_QZSS_MSM7 = 1117
 RTCM_MSG_TYPE_ARP_1005 = 1005
-RTCM_MSG_TYPE_ARP_1006 = 1006 # Alternative with height
+RTCM_MSG_TYPE_ARP_1006 = 1006  # Alternative with height
 
 IMPORTANT_RTCM_TYPES: dict[int, str] = {
     RTCM_MSG_TYPE_GPS_MSM7: "GPS MSM7 (1077)",
     RTCM_MSG_TYPE_GLONASS_MSM7: "GLONASS MSM7 (1087)",
     RTCM_MSG_TYPE_GALILEO_MSM7: "Galileo MSM7 (1097)",
     RTCM_MSG_TYPE_BDS_MSM7: "BDS MSM7 (1127)",
-    RTCM_MSG_TYPE_ARP_1005: "ARP (1005/1006)", # Base station position
+    RTCM_MSG_TYPE_ARP_1005: "ARP (1005/1006)",  # Base station position
 }
 
 
@@ -66,6 +66,6 @@ MAX_UI_MESSAGE_LENGTH = 70  # Max length for UI log messages
 NTRIP_HEADER_SIZE_LIMIT = 8192  # Max NTRIP response header size in bytes
 
 # --- Logging ---
-LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DEFAULT_LOG_FILENAME = "rtk_client.log"
 MAX_LOG_MESSAGES = 100  # UI log buffer size

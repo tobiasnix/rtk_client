@@ -100,6 +100,13 @@ class TestRoundTrip:
         save_state(sample_snapshot, filename=state_file)
         loaded = load_state(filename=state_file)
         assert loaded is not None
-        for key in ("fix_type", "rtk_status", "num_satellites_used", "hdop",
-                     "firmware_version", "module_name", "ntrip_total_bytes"):
+        for key in (
+            "fix_type",
+            "rtk_status",
+            "num_satellites_used",
+            "hdop",
+            "firmware_version",
+            "module_name",
+            "ntrip_total_bytes",
+        ):
             assert loaded[key] == sample_snapshot[key], f"Mismatch for {key}"

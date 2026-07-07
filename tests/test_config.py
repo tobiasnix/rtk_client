@@ -128,8 +128,10 @@ class TestParseArgumentsWithConfig:
             "sys.argv",
             [
                 "prog",
-                "--config", str(config_file),
-                "--port", "/dev/ttyUSB99",
+                "--config",
+                str(config_file),
+                "--port",
+                "/dev/ttyUSB99",
             ],
         ):
             args = parse_arguments()

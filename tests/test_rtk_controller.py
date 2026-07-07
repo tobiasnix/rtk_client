@@ -86,8 +86,12 @@ class TestRtkControllerStart:
         mock_save,
     ):
         controller, _, gnss_device, _, ntrip_client = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         gnss_device.connect.return_value = True
         ntrip_client.is_running.return_value = True
@@ -116,8 +120,12 @@ class TestRtkControllerStart:
         mock_save,
     ):
         controller, _, gnss_device, _, _ = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         gnss_device.connect.return_value = False
 
@@ -148,8 +156,13 @@ class TestRtkControllerStart:
         config.position_log_interval = 2.0
 
         controller, _, gnss_device, _, ntrip_client = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save, config=config,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
+            config=config,
         )
         gnss_device.connect.return_value = True
         ntrip_client.is_running.return_value = True
@@ -176,8 +189,12 @@ class TestRtkControllerStart:
         mock_save,
     ):
         controller, _, gnss_device, _, ntrip_client = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         gnss_device.connect.return_value = True
         # NTRIP fails to start
@@ -211,8 +228,12 @@ class TestRtkControllerStop:
         mock_save,
     ):
         controller, _, gnss_device, _, ntrip_client = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         # Simulate running state
         controller._running.set()
@@ -239,8 +260,12 @@ class TestRtkControllerStop:
         mock_save,
     ):
         controller, _, gnss_device, _, ntrip_client = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         controller._running.set()
 
@@ -267,8 +292,12 @@ class TestRtkControllerStop:
         mock_save,
     ):
         controller, _, gnss_device, _, ntrip_client = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         controller._running.set()
 
@@ -301,8 +330,12 @@ class TestReadGnssDataLoop:
         mock_save,
     ):
         controller, _, gnss_device, nmea_parser, _ = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         gnss_device.is_connected.return_value = True
 
@@ -337,8 +370,12 @@ class TestReadGnssDataLoop:
         mock_save,
     ):
         controller, _, gnss_device, _, _ = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
 
         call_count = 0
@@ -383,8 +420,12 @@ class TestReadGnssDataLoop:
         mock_save,
     ):
         controller, _, gnss_device, nmea_parser, _ = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         gnss_device.is_connected.return_value = True
 
@@ -433,8 +474,12 @@ class TestRtkControllerMisc:
         mock_save,
     ):
         controller, _, _, _, ntrip_client = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
         ntrip_client.reset_connection.return_value = True
 
@@ -459,8 +504,12 @@ class TestRtkControllerMisc:
         mock_save,
     ):
         controller, _, _, _, _ = _build_controller(
-            mock_get_profile, mock_gnss_cls, mock_parser_cls,
-            mock_ntrip_cls, mock_load, mock_save,
+            mock_get_profile,
+            mock_gnss_cls,
+            mock_parser_cls,
+            mock_ntrip_cls,
+            mock_load,
+            mock_save,
         )
 
         state = controller.get_current_state()

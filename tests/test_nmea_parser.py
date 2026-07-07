@@ -78,7 +78,7 @@ class TestCalculateSnrStats:
         assert stats["max"] == 40.0
         assert abs(stats["avg"] - 28.33) < 0.1
         assert stats["good_count"] == 1  # >= 35
-        assert stats["bad_count"] == 1   # <= 20
+        assert stats["bad_count"] == 1  # <= 20
 
     def test_all_good_snr(self):
         sats = {
@@ -181,9 +181,11 @@ class TestParse:
         mock_pynmea2.types.talker.GSA = pynmea2.types.talker.GSA
         mock_pynmea2.ParseError = pynmea2.ParseError
 
-        with patch.object(self.parser, "_parse_gga") as mock_gga, \
-             patch.object(self.parser, "_parse_gsv") as mock_gsv, \
-             patch.object(self.parser, "_parse_gsa") as mock_gsa:
+        with (
+            patch.object(self.parser, "_parse_gga") as mock_gga,
+            patch.object(self.parser, "_parse_gsv") as mock_gsv,
+            patch.object(self.parser, "_parse_gsa") as mock_gsa,
+        ):
             self.parser.parse("$GPRMC,dummy*00")
             mock_gga.assert_not_called()
             mock_gsv.assert_not_called()
@@ -195,8 +197,9 @@ class TestParse:
 # ---------------------------------------------------------------------------
 
 
-def _make_gga_msg(gps_qual=4, latitude=40.109, longitude=-7.154,
-                  altitude="476.68", num_sats="12", horizontal_dil="0.8"):
+def _make_gga_msg(
+    gps_qual=4, latitude=40.109, longitude=-7.154, altitude="476.68", num_sats="12", horizontal_dil="0.8"
+):
     """Helper to create a mock GGA message with sensible defaults."""
     msg = MagicMock(spec=pynmea2.types.talker.GGA)
     msg.gps_qual = gps_qual
@@ -382,8 +385,7 @@ class TestParseGga:
 # ---------------------------------------------------------------------------
 
 
-def _make_gsv_msg(talker="GP", num_messages=1, msg_num=1, num_sv_in_view=1,
-                  sats=None):
+def _make_gsv_msg(talker="GP", num_messages=1, msg_num=1, num_sv_in_view=1, sats=None):
     """Helper to create a mock GSV message.
 
     sats: list of dicts with keys prn, elev, azim, snr (up to 4 per message).
@@ -424,9 +426,7 @@ def _make_gsv_msg(talker="GP", num_messages=1, msg_num=1, num_sv_in_view=1,
                 existing_attrs.add(f"{prefix}{i}")
 
     # Store original hasattr behavior and override
-    real_attrs = {
-        "talker", "num_messages", "msg_num", "num_sv_in_view"
-    } | existing_attrs
+    real_attrs = {"talker", "num_messages", "msg_num", "num_sv_in_view"} | existing_attrs
 
     def custom_hasattr(name):
         return name in real_attrs
@@ -454,8 +454,7 @@ def _make_gsv_msg(talker="GP", num_messages=1, msg_num=1, num_sv_in_view=1,
     return msg
 
 
-def _make_simple_gsv_msg(talker="GP", num_messages=1, msg_num=1,
-                         num_sv_in_view=1, sats=None):
+def _make_simple_gsv_msg(talker="GP", num_messages=1, msg_num=1, num_sv_in_view=1, sats=None):
     """Simpler helper that sets all 4 satellite slots, using empty strings for missing ones."""
     msg = MagicMock()
     msg.talker = talker
@@ -491,11 +490,14 @@ class TestParseGsv:
     def test_single_complete_gsv_sequence(self):
         """Single complete GSV sequence (1 of 1) updates state."""
         msg = _make_simple_gsv_msg(
-            talker="GP", num_messages=1, msg_num=1, num_sv_in_view=2,
+            talker="GP",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=2,
             sats=[
                 {"prn": "5", "elev": "45", "azim": "180", "snr": "35"},
                 {"prn": "10", "elev": "30", "azim": "90", "snr": "28"},
-            ]
+            ],
         )
         self.parser._parse_gsv(msg)
 
@@ -510,13 +512,16 @@ class TestParseGsv:
         """Multi-sentence GSV: first message clears temp, last commits to state."""
         # First message of 2
         msg1 = _make_simple_gsv_msg(
-            talker="GP", num_messages=2, msg_num=1, num_sv_in_view=5,
+            talker="GP",
+            num_messages=2,
+            msg_num=1,
+            num_sv_in_view=5,
             sats=[
                 {"prn": "1", "elev": "10", "azim": "100", "snr": "20"},
                 {"prn": "2", "elev": "20", "azim": "200", "snr": "25"},
                 {"prn": "3", "elev": "30", "azim": "300", "snr": "30"},
                 {"prn": "4", "elev": "40", "azim": "45", "snr": "40"},
-            ]
+            ],
         )
         self.parser._parse_gsv(msg1)
 
@@ -526,10 +531,13 @@ class TestParseGsv:
 
         # Second (last) message of 2
         msg2 = _make_simple_gsv_msg(
-            talker="GP", num_messages=2, msg_num=2, num_sv_in_view=5,
+            talker="GP",
+            num_messages=2,
+            msg_num=2,
+            num_sv_in_view=5,
             sats=[
                 {"prn": "5", "elev": "50", "azim": "50", "snr": "45"},
-            ]
+            ],
         )
         self.parser._parse_gsv(msg2)
 
@@ -541,8 +549,11 @@ class TestParseGsv:
     def test_talker_gp_maps_to_gps(self):
         """GP talker maps to 'GPS' system name."""
         msg = _make_simple_gsv_msg(
-            talker="GP", num_messages=1, msg_num=1, num_sv_in_view=1,
-            sats=[{"prn": "1", "elev": "45", "azim": "180", "snr": "35"}]
+            talker="GP",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=1,
+            sats=[{"prn": "1", "elev": "45", "azim": "180", "snr": "35"}],
         )
         self.parser._parse_gsv(msg)
 
@@ -552,8 +563,11 @@ class TestParseGsv:
     def test_talker_ga_maps_to_galileo(self):
         """GA talker maps to 'Galileo' system name."""
         msg = _make_simple_gsv_msg(
-            talker="GA", num_messages=1, msg_num=1, num_sv_in_view=1,
-            sats=[{"prn": "1", "elev": "45", "azim": "180", "snr": "35"}]
+            talker="GA",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=1,
+            sats=[{"prn": "1", "elev": "45", "azim": "180", "snr": "35"}],
         )
         self.parser._parse_gsv(msg)
 
@@ -563,8 +577,11 @@ class TestParseGsv:
     def test_talker_gb_maps_to_beidou(self):
         """GB talker maps to 'BeiDou' system name."""
         msg = _make_simple_gsv_msg(
-            talker="GB", num_messages=1, msg_num=1, num_sv_in_view=1,
-            sats=[{"prn": "11", "elev": "50", "azim": "270", "snr": "30"}]
+            talker="GB",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=1,
+            sats=[{"prn": "11", "elev": "50", "azim": "270", "snr": "30"}],
         )
         self.parser._parse_gsv(msg)
 
@@ -574,8 +591,11 @@ class TestParseGsv:
     def test_talker_gl_maps_to_glonass(self):
         """GL talker maps to 'GLONASS' system name."""
         msg = _make_simple_gsv_msg(
-            talker="GL", num_messages=1, msg_num=1, num_sv_in_view=1,
-            sats=[{"prn": "71", "elev": "60", "azim": "120", "snr": "32"}]
+            talker="GL",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=1,
+            sats=[{"prn": "71", "elev": "60", "azim": "120", "snr": "32"}],
         )
         self.parser._parse_gsv(msg)
 
@@ -585,10 +605,13 @@ class TestParseGsv:
     def test_missing_satellite_fields_graceful_skip(self):
         """Missing satellite fields: satellite is gracefully skipped."""
         msg = _make_simple_gsv_msg(
-            talker="GP", num_messages=1, msg_num=1, num_sv_in_view=1,
+            talker="GP",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=1,
             sats=[
                 {"prn": "5", "elev": "45", "azim": "180", "snr": "35"},
-            ]
+            ],
         )
         # Simulate missing PRN for slot 2 (empty string, will be skipped)
         # Slot 2 already has empty strings from _make_simple_gsv_msg
@@ -602,11 +625,14 @@ class TestParseGsv:
     def test_zero_snr_satellite_counted_but_not_in_system_count(self):
         """Zero SNR: satellite is recorded but not counted in system satellite counts."""
         msg = _make_simple_gsv_msg(
-            talker="GP", num_messages=1, msg_num=1, num_sv_in_view=2,
+            talker="GP",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=2,
             sats=[
                 {"prn": "1", "elev": "45", "azim": "180", "snr": "35"},
                 {"prn": "2", "elev": "30", "azim": "90", "snr": "0"},
-            ]
+            ],
         )
         self.parser._parse_gsv(msg)
 
@@ -620,8 +646,11 @@ class TestParseGsv:
     def test_invalid_sentence_num_zero_returns_early(self):
         """Invalid sequence number (sentence_num=0): early return, no state update."""
         msg = _make_simple_gsv_msg(
-            talker="GP", num_messages=1, msg_num=0, num_sv_in_view=1,
-            sats=[{"prn": "1", "elev": "45", "azim": "180", "snr": "35"}]
+            talker="GP",
+            num_messages=1,
+            msg_num=0,
+            num_sv_in_view=1,
+            sats=[{"prn": "1", "elev": "45", "azim": "180", "snr": "35"}],
         )
         self.parser._parse_gsv(msg)
 
@@ -631,11 +660,14 @@ class TestParseGsv:
     def test_snr_stats_updated_on_last_sentence(self):
         """SNR stats are calculated and updated when last GSV sentence is processed."""
         msg = _make_simple_gsv_msg(
-            talker="GP", num_messages=1, msg_num=1, num_sv_in_view=2,
+            talker="GP",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=2,
             sats=[
                 {"prn": "1", "elev": "45", "azim": "180", "snr": "40"},
                 {"prn": "2", "elev": "30", "azim": "90", "snr": "20"},
-            ]
+            ],
         )
         self.parser._parse_gsv(msg)
 
@@ -648,15 +680,21 @@ class TestParseGsv:
         """First sentence of a new sequence clears data from the previous sequence."""
         # Process a complete first sequence
         msg1 = _make_simple_gsv_msg(
-            talker="GP", num_messages=1, msg_num=1, num_sv_in_view=1,
-            sats=[{"prn": "99", "elev": "10", "azim": "10", "snr": "10"}]
+            talker="GP",
+            num_messages=1,
+            msg_num=1,
+            num_sv_in_view=1,
+            sats=[{"prn": "99", "elev": "10", "azim": "10", "snr": "10"}],
         )
         self.parser._parse_gsv(msg1)
 
         # Start a new sequence (msg 1 of 2) - should clear temp data
         msg2 = _make_simple_gsv_msg(
-            talker="GP", num_messages=2, msg_num=1, num_sv_in_view=1,
-            sats=[{"prn": "1", "elev": "45", "azim": "180", "snr": "35"}]
+            talker="GP",
+            num_messages=2,
+            msg_num=1,
+            num_sv_in_view=1,
+            sats=[{"prn": "1", "elev": "45", "azim": "180", "snr": "35"}],
         )
         self.parser._parse_gsv(msg2)
 
@@ -708,14 +746,13 @@ class TestParseGsa:
 
     def test_marks_satellites_active_based_on_prn(self):
         """GSA marks satellites as active based on PRN."""
-        self._populate_gsv_satellites({
-            "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180,
-                     "system": "GPS", "active": False},
-            "GP-10": {"prn": "10", "snr": 28, "elevation": 30, "azimuth": 90,
-                      "system": "GPS", "active": False},
-            "GP-15": {"prn": "15", "snr": 20, "elevation": 15, "azimuth": 270,
-                      "system": "GPS", "active": False},
-        })
+        self._populate_gsv_satellites(
+            {
+                "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180, "system": "GPS", "active": False},
+                "GP-10": {"prn": "10", "snr": 28, "elevation": 30, "azimuth": 90, "system": "GPS", "active": False},
+                "GP-15": {"prn": "15", "snr": 20, "elevation": 15, "azimuth": 270, "system": "GPS", "active": False},
+            }
+        )
 
         msg = _make_gsa_msg(talker="GP", active_prns=["5", "10"])
         self.parser._parse_gsa(msg)
@@ -726,12 +763,12 @@ class TestParseGsa:
 
     def test_gn_talker_cross_constellation_lookup(self):
         """GN talker performs cross-constellation lookup to find the right satellite."""
-        self._populate_gsv_satellites({
-            "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180,
-                     "system": "GPS", "active": False},
-            "GA-10": {"prn": "10", "snr": 28, "elevation": 30, "azimuth": 90,
-                      "system": "Galileo", "active": False},
-        })
+        self._populate_gsv_satellites(
+            {
+                "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180, "system": "GPS", "active": False},
+                "GA-10": {"prn": "10", "snr": 28, "elevation": 30, "azimuth": 90, "system": "Galileo", "active": False},
+            }
+        )
 
         # GN talker with PRN "5" should match GP-5 (lookup by prn value)
         msg = _make_gsa_msg(talker="GN", active_prns=["5"])
@@ -741,12 +778,12 @@ class TestParseGsa:
 
     def test_gn_talker_matches_galileo_satellite(self):
         """GN talker can match Galileo satellites via cross-constellation lookup."""
-        self._populate_gsv_satellites({
-            "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180,
-                     "system": "GPS", "active": False},
-            "GA-10": {"prn": "10", "snr": 28, "elevation": 30, "azimuth": 90,
-                      "system": "Galileo", "active": False},
-        })
+        self._populate_gsv_satellites(
+            {
+                "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180, "system": "GPS", "active": False},
+                "GA-10": {"prn": "10", "snr": 28, "elevation": 30, "azimuth": 90, "system": "Galileo", "active": False},
+            }
+        )
 
         msg = _make_gsa_msg(talker="GN", active_prns=["10"])
         self.parser._parse_gsa(msg)
@@ -755,10 +792,11 @@ class TestParseGsa:
 
     def test_satellite_not_in_gsv_data_no_crash(self):
         """Satellite referenced by GSA but not in GSV data does not crash."""
-        self._populate_gsv_satellites({
-            "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180,
-                     "system": "GPS", "active": False},
-        })
+        self._populate_gsv_satellites(
+            {
+                "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180, "system": "GPS", "active": False},
+            }
+        )
 
         # PRN 99 is not in GSV data
         msg = _make_gsa_msg(talker="GP", active_prns=["99"])
@@ -770,14 +808,13 @@ class TestParseGsa:
 
     def test_deactivation_of_previously_active_satellites(self):
         """Previously active satellites are deactivated if not in current GSA."""
-        self._populate_gsv_satellites({
-            "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180,
-                     "system": "GPS", "active": True},
-            "GP-10": {"prn": "10", "snr": 28, "elevation": 30, "azimuth": 90,
-                      "system": "GPS", "active": True},
-            "GP-15": {"prn": "15", "snr": 20, "elevation": 15, "azimuth": 270,
-                      "system": "GPS", "active": False},
-        })
+        self._populate_gsv_satellites(
+            {
+                "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180, "system": "GPS", "active": True},
+                "GP-10": {"prn": "10", "snr": 28, "elevation": 30, "azimuth": 90, "system": "GPS", "active": True},
+                "GP-15": {"prn": "15", "snr": 20, "elevation": 15, "azimuth": 270, "system": "GPS", "active": False},
+            }
+        )
 
         # Only PRN 10 is now active
         msg = _make_gsa_msg(talker="GP", active_prns=["10"])
@@ -792,12 +829,12 @@ class TestParseGsa:
 
     def test_gsa_does_not_affect_other_constellation_satellites(self):
         """A GP GSA message does not deactivate Galileo satellites."""
-        self._populate_gsv_satellites({
-            "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180,
-                     "system": "GPS", "active": True},
-            "GA-1": {"prn": "1", "snr": 30, "elevation": 60, "azimuth": 120,
-                     "system": "Galileo", "active": True},
-        })
+        self._populate_gsv_satellites(
+            {
+                "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180, "system": "GPS", "active": True},
+                "GA-1": {"prn": "1", "snr": 30, "elevation": 60, "azimuth": 120, "system": "Galileo", "active": True},
+            }
+        )
 
         # GP GSA with no active PRNs
         msg = _make_gsa_msg(talker="GP", active_prns=[])
@@ -810,12 +847,12 @@ class TestParseGsa:
 
     def test_gn_talker_deactivates_across_constellations(self):
         """GN talker deactivates satellites across all constellations when not in active list."""
-        self._populate_gsv_satellites({
-            "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180,
-                     "system": "GPS", "active": True},
-            "GA-1": {"prn": "1", "snr": 30, "elevation": 60, "azimuth": 120,
-                     "system": "Galileo", "active": True},
-        })
+        self._populate_gsv_satellites(
+            {
+                "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180, "system": "GPS", "active": True},
+                "GA-1": {"prn": "1", "snr": 30, "elevation": 60, "azimuth": 120, "system": "Galileo", "active": True},
+            }
+        )
 
         # GN GSA with only GP-5 active (via cross-constellation lookup)
         msg = _make_gsa_msg(talker="GN", active_prns=["5"])
@@ -827,10 +864,11 @@ class TestParseGsa:
 
     def test_empty_gsa_message(self):
         """GSA message with no active PRNs deactivates all relevant satellites."""
-        self._populate_gsv_satellites({
-            "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180,
-                     "system": "GPS", "active": True},
-        })
+        self._populate_gsv_satellites(
+            {
+                "GP-5": {"prn": "5", "snr": 35, "elevation": 45, "azimuth": 180, "system": "GPS", "active": True},
+            }
+        )
 
         msg = _make_gsa_msg(talker="GP", active_prns=[])
         self.parser._parse_gsa(msg)

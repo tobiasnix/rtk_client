@@ -21,31 +21,30 @@ class PositionLogger:
         self._write_header()
 
     def _write_header(self) -> None:
-        with open(self._filename, 'w', newline='') as f:
+        with open(self._filename, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([
-                'timestamp', 'lat', 'lon', 'alt',
-                'fix_type', 'rtk_status', 'num_sats', 'hdop'
-            ])
+            writer.writerow(["timestamp", "lat", "lon", "alt", "fix_type", "rtk_status", "num_sats", "hdop"])
         logger.info(f"Position log created: {self._filename}")
 
     def _log_loop(self) -> None:
         while self._running.is_set():
             snapshot = self._state.get_state_snapshot()
-            if snapshot.get('have_position_lock'):
-                pos = snapshot.get('position', {})
-                with open(self._filename, 'a', newline='') as f:
+            if snapshot.get("have_position_lock"):
+                pos = snapshot.get("position", {})
+                with open(self._filename, "a", newline="") as f:
                     writer = csv.writer(f)
-                    writer.writerow([
-                        datetime.now(timezone.utc).isoformat(),
-                        pos.get('lat', 0.0),
-                        pos.get('lon', 0.0),
-                        pos.get('alt', 0.0),
-                        snapshot.get('fix_type', 0),
-                        snapshot.get('rtk_status', 'Unknown'),
-                        snapshot.get('num_satellites_used', 0),
-                        snapshot.get('hdop', 99.99),
-                    ])
+                    writer.writerow(
+                        [
+                            datetime.now(timezone.utc).isoformat(),
+                            pos.get("lat", 0.0),
+                            pos.get("lon", 0.0),
+                            pos.get("alt", 0.0),
+                            snapshot.get("fix_type", 0),
+                            snapshot.get("rtk_status", "Unknown"),
+                            snapshot.get("num_satellites_used", 0),
+                            snapshot.get("hdop", 99.99),
+                        ]
+                    )
             self._running.wait(timeout=self._interval)
 
     def start(self) -> None:

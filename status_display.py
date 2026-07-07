@@ -14,6 +14,7 @@ from rtk_state import GnssState
 # Use a logger specific to this module
 display_logger = logging.getLogger(__name__)
 
+
 class StatusDisplay:
     """Handles the curses-based status display with a simpler and more robust approach."""
 
@@ -94,7 +95,7 @@ class StatusDisplay:
             if max_y < self.MIN_HEIGHT or max_x < self.MIN_WIDTH:
                 warning = f"Terminal too small: {max_y}x{max_x}. Need {self.MIN_HEIGHT}x{self.MIN_WIDTH}"
                 try:
-                    self._stdscr.addstr(0, 0, warning[:max_x-1], curses.A_BOLD)
+                    self._stdscr.addstr(0, 0, warning[: max_x - 1], curses.A_BOLD)
                     self._stdscr.refresh()
                 except curses.error:
                     pass
@@ -145,6 +146,7 @@ class StatusDisplay:
             self._sat_win = None
             self._msg_win = None
             return False
+
     def _draw_separator(self):
         """Draw vertical separator between info and sat panels."""
         if not self._stdscr or not self._info_win or not self._sat_win:
@@ -226,7 +228,7 @@ class StatusDisplay:
             "magenta": curses.color_pair(7),
             "bold": curses.A_BOLD,
             "normal": curses.A_NORMAL,
-            "dim": curses.A_DIM
+            "dim": curses.A_DIM,
         }
 
         return colors.get(name.lower(), curses.A_NORMAL)
@@ -245,7 +247,7 @@ class StatusDisplay:
             return  # Too small to draw anything meaningful
 
         # Draw title centered
-        module = state.get('module_name', 'RTK GNSS')
+        module = state.get("module_name", "RTK GNSS")
         title = f" {module} RTK Status - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
         title_x = max(1, (max_x - len(title)) // 2)
         self._addstr_safe(win, 1, title_x, title, self._get_color("bold"))
@@ -301,20 +303,20 @@ class StatusDisplay:
         y = draw_section("[GNSS Info]")
 
         # Runtime
-        runtime = datetime.now(timezone.utc) - state.get('start_time', datetime.now(timezone.utc))
-        y = draw_line("Runtime", str(runtime).split('.')[0])
+        runtime = datetime.now(timezone.utc) - state.get("start_time", datetime.now(timezone.utc))
+        y = draw_line("Runtime", str(runtime).split(".")[0])
 
         # Firmware
-        y = draw_line("Firmware", state.get('firmware_version', 'N/A')[:20])
+        y = draw_line("Firmware", state.get("firmware_version", "N/A")[:20])
 
         # Position
-        pos = state.get('position', {})
+        pos = state.get("position", {})
         y = draw_line("Latitude", f"{pos.get('lat', 0.0):.8f}°")
         y = draw_line("Longitude", f"{pos.get('lon', 0.0):.8f}°")
         y = draw_line("Altitude", f"{pos.get('alt', 0.0):.3f} m")
 
         # Fix information
-        last_fix_time = state.get('last_fix_time')
+        last_fix_time = state.get("last_fix_time")
         if last_fix_time:
             fix_age = (datetime.now(timezone.utc) - last_fix_time).total_seconds()
             age_color = "red" if fix_age > 30 else ("yellow" if fix_age > 10 else "white")
@@ -323,23 +325,31 @@ class StatusDisplay:
             y = draw_line("Fix Age", "N/A")
 
         # TTFF
-        ttff = state.get('first_fix_time_sec')
+        ttff = state.get("first_fix_time_sec")
         y = draw_line("TTFF", f"{ttff:.1f} sec" if ttff is not None else "Pending...")
 
         # RTK Status
-        rtk_status = state.get('rtk_status', "Unknown")
-        rtk_color = "green" if rtk_status == "RTK Fixed" else \
-                    "yellow" if rtk_status == "RTK Float" else \
-                    "white" if "GPS" in rtk_status or "DGPS" in rtk_status else "red"
+        rtk_status = state.get("rtk_status", "Unknown")
+        rtk_color = (
+            "green"
+            if rtk_status == "RTK Fixed"
+            else "yellow"
+            if rtk_status == "RTK Float"
+            else "white"
+            if "GPS" in rtk_status or "DGPS" in rtk_status
+            else "red"
+        )
         y = draw_line("RTK Status", rtk_status, rtk_color)
 
         # Fix quality and satellites
-        y = draw_line("Fix Quality", state.get('fix_type', 0))
-        y = draw_line("Sats Used/View", f"{state.get('num_satellites_used', 0)} / {state.get('num_satellites_in_view', 0)}")
+        y = draw_line("Fix Quality", state.get("fix_type", 0))
+        y = draw_line(
+            "Sats Used/View", f"{state.get('num_satellites_used', 0)} / {state.get('num_satellites_in_view', 0)}"
+        )
         y = draw_line("HDOP", f"{state.get('hdop', DEFAULT_HDOP):.2f}")
 
         # Systems in view
-        systems = state.get('satellite_systems', Counter())
+        systems = state.get("satellite_systems", Counter())
         systems_str = ", ".join(f"{sys}:{c}" for sys, c in sorted(systems.items())) if systems else "N/A"
         y = draw_line("Systems View", systems_str)
 
@@ -351,12 +361,12 @@ class StatusDisplay:
             # Server info
             ntrip_host = f"{getattr(self._config, 'ntrip_server', 'N/A')}:{getattr(self._config, 'ntrip_port', 'N/A')}"
             y = draw_line("Server", ntrip_host)
-            y = draw_line("Mountpoint", getattr(self._config, 'ntrip_mountpoint', 'N/A'))
+            y = draw_line("Mountpoint", getattr(self._config, "ntrip_mountpoint", "N/A"))
 
             # Connection status
-            ntrip_conn = state.get('ntrip_connected', False)
-            ntrip_msg = state.get('ntrip_status_message', 'Unknown')
-            gave_up = state.get('ntrip_connection_gave_up', False)
+            ntrip_conn = state.get("ntrip_connected", False)
+            ntrip_msg = state.get("ntrip_status_message", "Unknown")
+            gave_up = state.get("ntrip_connection_gave_up", False)
 
             if gave_up:
                 status_str = f"Gave Up - {ntrip_msg}"
@@ -378,7 +388,7 @@ class StatusDisplay:
 
             # Reconnect attempts if relevant
             if not ntrip_conn and not gave_up and "Retry" not in ntrip_msg:
-                reconnect_attempts = state.get('ntrip_reconnect_attempts', 0)
+                reconnect_attempts = state.get("ntrip_reconnect_attempts", 0)
                 if reconnect_attempts > 0:
                     retry_color = "yellow" if reconnect_attempts < MAX_NTRIP_RETRIES else "red"
                     y = draw_line("Reconnect", f"Attempt {reconnect_attempts}/{MAX_NTRIP_RETRIES}", retry_color)
@@ -387,23 +397,22 @@ class StatusDisplay:
             if not ntrip_conn:
                 y = draw_line("RTCM Age", "N/A")
             else:
-                last_data_time = state.get('ntrip_last_data_time')
+                last_data_time = state.get("ntrip_last_data_time")
                 if last_data_time:
                     age_seconds = (datetime.now(timezone.utc) - last_data_time).total_seconds()
-                    age_color = "red" if age_seconds > NTRIP_DATA_TIMEOUT else \
-                               "yellow" if age_seconds > 10 else "white"
+                    age_color = "red" if age_seconds > NTRIP_DATA_TIMEOUT else "yellow" if age_seconds > 10 else "white"
                     y = draw_line("RTCM Age", f"{age_seconds:.1f} sec", age_color)
                 else:
                     y = draw_line("RTCM Age", "N/A")
 
             # RTCM data rates and totals
-            rates_deque = state.get('ntrip_data_rates', deque())
+            rates_deque = state.get("ntrip_data_rates", deque())
             avg_rate = sum(rates_deque) / len(rates_deque) if rates_deque else 0.0
             y = draw_line("RTCM Rate", f"{avg_rate:.1f} B/s")
             y = draw_line("Total RTCM", f"{state.get('ntrip_total_bytes', 0):,} B")
 
             # RTCM message types
-            rtcm_types = list(state.get('last_rtcm_message_types', deque()))
+            rtcm_types = list(state.get("last_rtcm_message_types", deque()))
             if rtcm_types:
                 unique_types = []
                 for t in reversed(rtcm_types):
@@ -411,11 +420,11 @@ class StatusDisplay:
                         unique_types.append(t)
                     if len(unique_types) >= 5:
                         break
-                types_str = '[' + ', '.join(map(str, reversed(unique_types))) + ']'
+                types_str = "[" + ", ".join(map(str, reversed(unique_types))) + "]"
                 if len(rtcm_types) > len(unique_types):
-                    types_str += '...'
+                    types_str += "..."
             else:
-                types_str = 'None Received'
+                types_str = "None Received"
 
             y = draw_line("RTCM Types", types_str)
 
@@ -438,7 +447,7 @@ class StatusDisplay:
         y, x = 1, 2
 
         # Draw title with focus indicator
-        is_focused = (self._focused_panel == "sat")
+        is_focused = self._focused_panel == "sat"
         title = "▶ Satellites in View" if is_focused else "[Satellites in View]"
         title_color = "green" if is_focused else "yellow"
         self._addstr_safe(win, y, x, title, self._get_color(title_color))
@@ -462,7 +471,7 @@ class StatusDisplay:
         y += 1
 
         # Get satellite data
-        satellites = state.get('satellites_info', {})
+        satellites = state.get("satellites_info", {})
 
         # Debug: If no satellites, show message
         if not satellites:
@@ -474,10 +483,10 @@ class StatusDisplay:
         def sort_key(item):
             _, sat_data = item
             try:
-                prn = int(sat_data.get('prn', '999'))
+                prn = int(sat_data.get("prn", "999"))
             except ValueError:
                 prn = 999
-            return (sat_data.get('system', 'zzz'), prn)
+            return (sat_data.get("system", "zzz"), prn)
 
         sorted_sats = sorted(satellites.items(), key=sort_key)
         self._last_sorted_sats = sorted_sats  # cache for detail view
@@ -493,8 +502,8 @@ class StatusDisplay:
         elif self._sat_selected_idx >= self._sat_scroll_offset + available_rows:
             self._sat_scroll_offset = self._sat_selected_idx - available_rows + 1
 
-        is_focused = (self._focused_panel == "sat")
-        visible_sats = sorted_sats[self._sat_scroll_offset:self._sat_scroll_offset + available_rows]
+        is_focused = self._focused_panel == "sat"
+        visible_sats = sorted_sats[self._sat_scroll_offset : self._sat_scroll_offset + available_rows]
 
         # Show scroll indicator in title
         if total_sats > available_rows:
@@ -506,12 +515,12 @@ class StatusDisplay:
             abs_idx = self._sat_scroll_offset + vis_idx
 
             # Extract satellite data
-            prn = sat.get('prn', '??')
-            system = sat.get('system', 'UNK')
-            snr = sat.get('snr', 0)
-            elev = sat.get('elevation')
-            azim = sat.get('azimuth')
-            active = sat.get('active', False)
+            prn = sat.get("prn", "??")
+            system = sat.get("system", "UNK")
+            snr = sat.get("snr", 0)
+            elev = sat.get("elevation")
+            azim = sat.get("azimuth")
+            active = sat.get("active", False)
 
             # Format system abbreviation
             sys_abbr = {
@@ -520,7 +529,7 @@ class StatusDisplay:
                 "Galileo": "GAL",
                 "BeiDou": "BDS",
                 "QZSS": "QZS",
-                "NavIC": "NAV"
+                "NavIC": "NAV",
             }.get(system, system[:3].upper())
 
             # Choose system color
@@ -529,13 +538,12 @@ class StatusDisplay:
                 "GLONASS": "yellow",
                 "Galileo": "blue",
                 "BeiDou": "red",
-                "QZSS": "magenta"
+                "QZSS": "magenta",
             }.get(system, "normal")
 
             # Choose SNR color
             if snr is not None and snr > 0:
-                snr_color = "green" if snr >= SNR_THRESHOLD_GOOD else \
-                           "yellow" if snr >= SNR_THRESHOLD_BAD else "red"
+                snr_color = "green" if snr >= SNR_THRESHOLD_GOOD else "yellow" if snr >= SNR_THRESHOLD_BAD else "red"
             else:
                 snr_color = "dim"
 
@@ -591,13 +599,13 @@ class StatusDisplay:
             return  # Too small
 
         # Draw title with focus indicator
-        is_focused = (self._focused_panel == "msg")
+        is_focused = self._focused_panel == "msg"
         title = "▶ Messages" if is_focused else "[Messages]"
         title_color = "green" if is_focused else "yellow"
         self._addstr_safe(win, 0, 2, title, self._get_color(title_color))
 
         # Get messages
-        messages = state.get('ui_log_messages', deque())
+        messages = state.get("ui_log_messages", deque())
         total_msgs = len(messages)
 
         # Calculate how many messages we can show
@@ -607,7 +615,7 @@ class StatusDisplay:
         # Adjust available_lines to ensure no overflow
         available_lines = max(1, available_lines - 1)  # Reserve one more line as safety margin
 
-        is_focused = (self._focused_panel == "msg")
+        is_focused = self._focused_panel == "msg"
 
         # When focused, allow manual scroll; otherwise auto-scroll to bottom
         if is_focused and self._msg_scroll_offset > 0:
@@ -742,7 +750,7 @@ class StatusDisplay:
 
     def handle_key(self, key: int) -> bool:
         """Handle navigation keys. Returns True if the key was consumed."""
-        if key == ord('\t'):  # Tab — cycle focus
+        if key == ord("\t"):  # Tab — cycle focus
             if self._focused_panel is None:
                 self._focused_panel = self.FOCUSABLE_PANELS[0]
             else:
@@ -773,7 +781,7 @@ class StatusDisplay:
         elif key == curses.KEY_DOWN and self._sat_selected_idx < total - 1:
             self._sat_selected_idx += 1
             return True
-        elif key in (curses.KEY_ENTER, ord('\n'), ord('\r')):
+        elif key in (curses.KEY_ENTER, ord("\n"), ord("\r")):
             self._show_satellite_detail()
             return True
         return False
@@ -800,12 +808,12 @@ class StatusDisplay:
             return
 
         _key, sat = self._last_sorted_sats[idx]
-        prn = sat.get('prn', '??')
-        system = sat.get('system', 'Unknown')
-        snr = sat.get('snr', 0)
-        elev = sat.get('elevation', '-')
-        azim = sat.get('azimuth', '-')
-        active = sat.get('active', False)
+        prn = sat.get("prn", "??")
+        system = sat.get("system", "Unknown")
+        snr = sat.get("snr", 0)
+        elev = sat.get("elevation", "-")
+        azim = sat.get("azimuth", "-")
+        active = sat.get("active", False)
 
         lines = [
             f"Satellite Detail: {system} PRN {prn}",
@@ -813,8 +821,8 @@ class StatusDisplay:
             f"  System:      {system}",
             f"  PRN:         {prn}",
             f"  SNR:         {snr} dBHz" if snr else "  SNR:         No signal",
-            f"  Elevation:   {elev}°" if elev != '-' else "  Elevation:   Unknown",
-            f"  Azimuth:     {azim}°" if azim != '-' else "  Azimuth:     Unknown",
+            f"  Elevation:   {elev}°" if elev != "-" else "  Elevation:   Unknown",
+            f"  Azimuth:     {azim}°" if azim != "-" else "  Azimuth:     Unknown",
             f"  In Fix:      {'Yes' if active else 'No'}",
             "",
             "Press any key to close",

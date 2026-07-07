@@ -11,8 +11,10 @@ from rtk_constants import *  # Import constants
 
 logger = logging.getLogger(__name__)
 
+
 class GnssState:
     """Thread-safe container for GNSS and NTRIP state."""
+
     def __init__(self, default_lat: float, default_lon: float, default_alt: float):
         self._lock = threading.RLock()
         # Default position
@@ -39,7 +41,7 @@ class GnssState:
         self.firmware_version: str = "Unknown"
         self.module_name: str = "GNSS Receiver"
         # Satellite Tracking
-        self.satellites_info: dict[str, dict[str, Any]] = {} # Key: Talker-PRN
+        self.satellites_info: dict[str, dict[str, Any]] = {}  # Key: Talker-PRN
         self.snr_stats: dict[str, float] = {"min": 0, "max": 0, "avg": 0, "good_count": 0, "bad_count": 0}
         self.satellite_systems: Counter = Counter()
         # NTRIP Status
@@ -54,7 +56,7 @@ class GnssState:
         self.last_rtcm_data_received: Optional[bytes] = None
         self.ntrip_status_message: str = "Not connected"
         self.ntrip_connection_gave_up: bool = False
-        self.ntrip_next_reconnect_time: Optional[datetime] = None # <<< Initialized
+        self.ntrip_next_reconnect_time: Optional[datetime] = None  # <<< Initialized
         # Diagnostics
         self.gps_error_count: int = 0
         self.ntrip_error_count: int = 0
@@ -77,7 +79,7 @@ class GnssState:
         with self._lock:
             snapshot = {}
             for key, value in self.__dict__.items():
-                if key == '_lock':
+                if key == "_lock":
                     continue
                 try:
                     snapshot[key] = copy.deepcopy(value)
@@ -116,16 +118,16 @@ class GnssState:
                 else:
                     processed_message = "NTRIP: Retrying..."
             elif "Bad file descriptor" in message:
-                 processed_message = "NTRIP: Socket Error (Shutdown)"
+                processed_message = "NTRIP: Socket Error (Shutdown)"
             elif "did not exit cleanly" in message:
-                 processed_message = "NTRIP: Thread Shutdown Issue"
+                processed_message = "NTRIP: Thread Shutdown Issue"
 
             # Combine timestamp and processed message
             full_ui_msg = f"[{timestamp}] {processed_message}"
 
             # Ensure the *final combined* message is truncated to safe length for the UI panel
             if len(full_ui_msg) > MAX_MSG_LENGTH:
-                full_ui_msg = full_ui_msg[:MAX_MSG_LENGTH-3] + "..." # Truncate combined message
+                full_ui_msg = full_ui_msg[: MAX_MSG_LENGTH - 3] + "..."  # Truncate combined message
 
             # Add formatted and truncated message to the buffer
             self.ui_log_messages.append(full_ui_msg)
@@ -145,13 +147,12 @@ class GnssState:
                 self.ntrip_error_count += 1
                 message = f"NTRIP Error #{self.ntrip_error_count}"
             else:
-                 logger.warning(f"Unknown error type for increment: {error_type}")
-                 return
+                logger.warning(f"Unknown error type for increment: {error_type}")
+                return
             # Log the error count increase as a warning
             logger.warning(message)
             # Add a simplified message to the UI log
             self.add_ui_log_message(message)
-
 
     def increment_ntrip_reconnects(self) -> int:
         """Increments the reconnect counter and returns the new value."""
@@ -163,41 +164,43 @@ class GnssState:
         """Resets the reconnect counter to 0."""
         with self._lock:
             if self.ntrip_reconnect_attempts > 0:
-                 logger.debug("Resetting NTRIP reconnect attempts counter.")
-                 self.ntrip_reconnect_attempts = 0
+                logger.debug("Resetting NTRIP reconnect attempts counter.")
+                self.ntrip_reconnect_attempts = 0
 
     def set_ntrip_gave_up(self, status: bool, message: str = "") -> None:
         """Sets the flag indicating NTRIP connection attempts have ceased."""
         with self._lock:
             if status != self.ntrip_connection_gave_up:
-                 self.ntrip_connection_gave_up = status
-                 log_msg = f"NTRIP connection attempts {'ceased' if status else 'resumed'}."
-                 if message: log_msg += f" Reason: {message}"
-                 logger.warning(log_msg)
-                 # Use add_ui_log_message for consistent formatting/truncation
-                 self.add_ui_log_message(log_msg)
-                 if status and message: # Update status message only when giving up
-                      self.ntrip_status_message = message
+                self.ntrip_connection_gave_up = status
+                log_msg = f"NTRIP connection attempts {'ceased' if status else 'resumed'}."
+                if message:
+                    log_msg += f" Reason: {message}"
+                logger.warning(log_msg)
+                # Use add_ui_log_message for consistent formatting/truncation
+                self.add_ui_log_message(log_msg)
+                if status and message:  # Update status message only when giving up
+                    self.ntrip_status_message = message
 
     def set_ntrip_connected(self, status: bool, message: str = "", log_to_ui: bool = True) -> None:
         """Updates NTRIP connection status and related state."""
         with self._lock:
-             changed = (self.ntrip_connected != status)
-             self.ntrip_connected = status
-             if message: self.ntrip_status_message = message
+            changed = self.ntrip_connected != status
+            self.ntrip_connected = status
+            if message:
+                self.ntrip_status_message = message
 
-             if status:
-                 # Connected successfully
-                 self.ntrip_last_data_time = datetime.now(timezone.utc) # Assume data might follow
-                 if changed:
-                     # Reset counters on successful connection transition
-                     self.reset_ntrip_reconnects()
-                     # Reset gave up flag if we reconnected
-                     # Use internal method which handles logging/UI message
-                     self.set_ntrip_gave_up(False)
-                     # Always log to UI on successful connection change
-                     self.add_ui_log_message("NTRIP Connected.")
-             elif changed and log_to_ui:
-                  # Just disconnected
-                  # Use add_ui_log_message for consistent formatting/truncation
-                  self.add_ui_log_message(f"NTRIP Disconnected: {message}")
+            if status:
+                # Connected successfully
+                self.ntrip_last_data_time = datetime.now(timezone.utc)  # Assume data might follow
+                if changed:
+                    # Reset counters on successful connection transition
+                    self.reset_ntrip_reconnects()
+                    # Reset gave up flag if we reconnected
+                    # Use internal method which handles logging/UI message
+                    self.set_ntrip_gave_up(False)
+                    # Always log to UI on successful connection change
+                    self.add_ui_log_message("NTRIP Connected.")
+            elif changed and log_to_ui:
+                # Just disconnected
+                # Use add_ui_log_message for consistent formatting/truncation
+                self.add_ui_log_message(f"NTRIP Disconnected: {message}")

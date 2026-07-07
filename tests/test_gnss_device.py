@@ -33,6 +33,7 @@ class TestGnssDeviceConnect:
     @patch("gnss_device.serial.Serial")
     def test_connect_failure(self, mock_serial_class):
         import serial
+
         mock_serial_class.side_effect = serial.SerialException("Port not found")
 
         state = GnssState(0.0, 0.0, 0.0)
@@ -107,7 +108,7 @@ class TestGnssDeviceWriteData:
         state = GnssState(0.0, 0.0, 0.0)
         device = GnssDevice("/dev/ttyUSB0", 115200, state)
         device.connect()
-        result = device.write_data(b"\xD3\x00\x04\x43\x50\x00\x00\x00\x00\x00")
+        result = device.write_data(b"\xd3\x00\x04\x43\x50\x00\x00\x00\x00\x00")
 
         assert result == 10
 
@@ -200,6 +201,7 @@ class TestDiscoverGnssPorts:
     @patch("serial.tools.list_ports.comports")
     def test_discover_finds_quectel(self, mock_comports):
         from gnss_device import discover_gnss_ports
+
         mock_port = MagicMock()
         mock_port.device = "/dev/ttyACM0"
         mock_port.description = "Quectel LC29H"
@@ -211,6 +213,7 @@ class TestDiscoverGnssPorts:
     @patch("serial.tools.list_ports.comports")
     def test_discover_empty(self, mock_comports):
         from gnss_device import discover_gnss_ports
+
         mock_comports.return_value = []
         result = discover_gnss_ports()
         assert result == []

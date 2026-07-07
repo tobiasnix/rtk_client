@@ -14,6 +14,7 @@ from module_profiles import (
 # LC29HProfile tests
 # ---------------------------------------------------------------------------
 
+
 class TestLC29HProfile:
     @pytest.fixture()
     def profile(self):
@@ -110,6 +111,7 @@ class TestLC29HProfile:
 # GenericProfile tests
 # ---------------------------------------------------------------------------
 
+
 class TestGenericProfile:
     @pytest.fixture()
     def profile(self):
@@ -142,6 +144,7 @@ class TestGenericProfile:
 # ---------------------------------------------------------------------------
 # get_profile() registry tests
 # ---------------------------------------------------------------------------
+
 
 class TestGetProfile:
     def test_get_lc29h(self):
@@ -176,6 +179,7 @@ class TestGetProfile:
 # ---------------------------------------------------------------------------
 # list_profiles() tests
 # ---------------------------------------------------------------------------
+
 
 class TestListProfiles:
     def test_returns_list(self):

@@ -88,8 +88,8 @@ class LC29HProfile(ModuleProfile):
             {"cmd": "PAIR062,2,1", "ack": True},  # GSA 1Hz
             {"cmd": "PAIR062,3,1", "ack": True},  # GSV 1Hz
             {"cmd": "PAIR062,5,1", "ack": True},  # VTG 1Hz
-            {"cmd": "PAIR436,1", "ack": True},     # Enable RTCM input
-            {"cmd": "PAIR513", "ack": True},        # Enable RTK mode
+            {"cmd": "PAIR436,1", "ack": True},  # Enable RTCM input
+            {"cmd": "PAIR513", "ack": True},  # Enable RTK mode
         ]
 
     def check_ack(self, command: str, response: str) -> bool:

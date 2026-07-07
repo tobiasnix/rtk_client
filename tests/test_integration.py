@@ -51,10 +51,10 @@ class TestRtkControllerInit:
         controller = RtkController(config)
         state = controller.get_current_state()
 
-        assert state['default_lat'] == 40.0
-        assert state['default_lon'] == -7.0
-        assert state['fix_type'] == 0
-        assert state['ntrip_connected'] is False
+        assert state["default_lat"] == 40.0
+        assert state["default_lon"] == -7.0
+        assert state["fix_type"] == 0
+        assert state["ntrip_connected"] is False
 
 
 class TestRtkControllerStop:

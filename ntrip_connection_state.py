@@ -22,19 +22,20 @@ class NtripConnectionState:
     def set_state(self, new_state: str, message: str = "") -> bool:
         """Changes the connection state and records the timestamp.
         Returns True if state actually changed."""
-        state_changed = (new_state != self.current_state)
+        state_changed = new_state != self.current_state
         # Always update timestamp and message if provided or state changed
         if state_changed or (message and message != self.status_message):
             self.current_state = new_state
             self.last_state_change = datetime.now(timezone.utc)
-            if message: self.status_message = message
+            if message:
+                self.status_message = message
 
             # Reset reconnect counter on successful connection or explicit disconnect
             if new_state == self.CONNECTED or (state_changed and new_state == self.DISCONNECTED):
                 self.reconnect_attempts = 0
 
             return state_changed
-        return False # No state change and message didn't change
+        return False  # No state change and message didn't change
 
     def is_connected(self) -> bool:
         return self.current_state == self.CONNECTED

@@ -12,6 +12,7 @@ from status_display import StatusDisplay
 # Helper factories
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_config():
     """Create a mock Config with NTRIP attributes."""
     config = MagicMock()
@@ -72,6 +73,7 @@ def _make_display():
 # TestStatusDisplayInit
 # ===========================================================================
 
+
 class TestStatusDisplayInit:
     """Verify constructor sets expected default attributes."""
 
@@ -106,6 +108,7 @@ class TestStatusDisplayInit:
 # ===========================================================================
 # TestAddstrSafe
 # ===========================================================================
+
 
 class TestAddstrSafe:
     """Tests for _addstr_safe boundary handling and truncation."""
@@ -166,6 +169,7 @@ class TestAddstrSafe:
 # ===========================================================================
 # TestGetColor
 # ===========================================================================
+
 
 class TestGetColor:
     """Tests for _get_color color attribute lookup."""
@@ -237,6 +241,7 @@ class TestGetColor:
 # TestSetupCurses
 # ===========================================================================
 
+
 class TestSetupCurses:
     """Tests for _setup_curses initialization logic."""
 
@@ -307,6 +312,7 @@ class TestSetupCurses:
 # ===========================================================================
 # TestCreateWindows
 # ===========================================================================
+
 
 class TestCreateWindows:
     """Tests for _create_windows layout and window creation."""
@@ -382,6 +388,7 @@ class TestCreateWindows:
 # TestDrawHeader
 # ===========================================================================
 
+
 class TestDrawHeader:
     """Tests for _draw_header title rendering."""
 
@@ -444,6 +451,7 @@ class TestDrawHeader:
 # TestDrawSatPanel
 # ===========================================================================
 
+
 class TestDrawSatPanel:
     """Tests for _draw_sat_panel satellite table rendering."""
 
@@ -482,12 +490,9 @@ class TestDrawSatPanel:
         display._sat_win = win
 
         sat_info = {
-            "G10": {"prn": "10", "system": "GPS", "snr": 40, "elevation": 45,
-                     "azimuth": 120, "active": True},
-            "E5": {"prn": "5", "system": "Galileo", "snr": 35, "elevation": 30,
-                    "azimuth": 90, "active": False},
-            "G3": {"prn": "3", "system": "GPS", "snr": 30, "elevation": 60,
-                    "azimuth": 200, "active": True},
+            "G10": {"prn": "10", "system": "GPS", "snr": 40, "elevation": 45, "azimuth": 120, "active": True},
+            "E5": {"prn": "5", "system": "Galileo", "snr": 35, "elevation": 30, "azimuth": 90, "active": False},
+            "G3": {"prn": "3", "system": "GPS", "snr": 30, "elevation": 60, "azimuth": 200, "active": True},
         }
         state = _make_state_dict(satellites_info=sat_info)
         display._draw_sat_panel(state)
@@ -500,9 +505,7 @@ class TestDrawSatPanel:
         sys_abbrs = [t.strip() for t in addstr_texts if t.strip() in ("GPS", "GAL", "GLO", "BDS")]
         # GPS entries should appear before GAL
         assert len(sys_abbrs) == 3, f"Expected 3 system abbrs, got {sys_abbrs}"
-        assert sys_abbrs == ["GPS", "GPS", "GAL"], (
-            f"Expected GPS entries before GAL; got {sys_abbrs}"
-        )
+        assert sys_abbrs == ["GPS", "GPS", "GAL"], f"Expected GPS entries before GAL; got {sys_abbrs}"
 
     @patch("status_display.curses")
     def test_system_abbreviation_mapping(self, mock_curses):
@@ -518,10 +521,8 @@ class TestDrawSatPanel:
         display._sat_win = win
 
         sat_info = {
-            "R1": {"prn": "1", "system": "GLONASS", "snr": 30, "elevation": 45,
-                    "azimuth": 90, "active": False},
-            "C5": {"prn": "5", "system": "BeiDou", "snr": 25, "elevation": 30,
-                    "azimuth": 180, "active": True},
+            "R1": {"prn": "1", "system": "GLONASS", "snr": 30, "elevation": 45, "azimuth": 90, "active": False},
+            "C5": {"prn": "5", "system": "BeiDou", "snr": 25, "elevation": 30, "azimuth": 180, "active": True},
         }
         state = _make_state_dict(satellites_info=sat_info)
         display._draw_sat_panel(state)
@@ -542,6 +543,7 @@ class TestDrawSatPanel:
 # TestDrawMsgPanel
 # ===========================================================================
 
+
 class TestDrawMsgPanel:
     """Tests for _draw_msg_panel message color coding and overflow."""
 
@@ -558,11 +560,13 @@ class TestDrawMsgPanel:
         win = _make_mock_win(max_y=10, max_x=80)
         display._msg_win = win
 
-        messages = deque([
-            "[12:00:00] Connection error occurred",
-            "[12:00:01] Warning: retry needed",
-            "[12:00:02] Connected successfully",
-        ])
+        messages = deque(
+            [
+                "[12:00:00] Connection error occurred",
+                "[12:00:01] Warning: retry needed",
+                "[12:00:02] Connected successfully",
+            ]
+        )
         state = _make_state_dict(ui_log_messages=messages)
         display._draw_msg_panel(state)
 
@@ -596,8 +600,7 @@ class TestDrawMsgPanel:
 
         # Should show [+N] indicator for hidden messages
         all_texts = [c[0][2] for c in win.addstr.call_args_list if len(c[0]) >= 3]
-        assert any("[+" in t and "]" in t for t in all_texts), \
-            f"Expected [+N] indicator in output; got: {all_texts}"
+        assert any("[+" in t and "]" in t for t in all_texts), f"Expected [+N] indicator in output; got: {all_texts}"
 
     @patch("status_display.curses")
     def test_returns_early_when_win_is_none(self, mock_curses):
@@ -631,6 +634,7 @@ class TestDrawMsgPanel:
 # ===========================================================================
 # TestUpdateDisplay
 # ===========================================================================
+
 
 class TestUpdateDisplay:
     """Tests for update_display orchestration logic."""
@@ -730,6 +734,7 @@ class TestUpdateDisplay:
 # TestShowHelpOverlay
 # ===========================================================================
 
+
 class TestShowHelpOverlay:
     """Tests for show_help_overlay modal behavior."""
 
@@ -776,6 +781,7 @@ class TestShowHelpOverlay:
 # TestTriggerRedraw
 # ===========================================================================
 
+
 class TestTriggerRedraw:
     """Tests for trigger_redraw flag management."""
 
@@ -789,6 +795,7 @@ class TestTriggerRedraw:
 # ===========================================================================
 # TestClose
 # ===========================================================================
+
 
 class TestClose:
     """Tests for close cleanup logic."""
@@ -829,6 +836,7 @@ class TestClose:
 # TestDrawInfoPanel
 # ===========================================================================
 
+
 class TestDrawInfoPanel:
     """Tests for _draw_info_panel GNSS/NTRIP info rendering."""
 
@@ -857,8 +865,7 @@ class TestDrawInfoPanel:
 
         # The RTK status value should be written with green color (pair(1)|BOLD)
         green_attr = (1 * 256) | curses.A_BOLD
-        rtk_calls = [c for c in win.addstr.call_args_list
-                     if len(c[0]) >= 4 and "RTK Fixed" in str(c[0][2])]
+        rtk_calls = [c for c in win.addstr.call_args_list if len(c[0]) >= 4 and "RTK Fixed" in str(c[0][2])]
         assert len(rtk_calls) > 0, "RTK Fixed text should be written"
         assert rtk_calls[0][0][3] == green_attr, "RTK Fixed should use green|bold"
 
@@ -879,7 +886,6 @@ class TestDrawInfoPanel:
         display._draw_info_panel(state)
 
         yellow_attr = (2 * 256) | curses.A_BOLD
-        rtk_calls = [c for c in win.addstr.call_args_list
-                     if len(c[0]) >= 4 and "RTK Float" in str(c[0][2])]
+        rtk_calls = [c for c in win.addstr.call_args_list if len(c[0]) >= 4 and "RTK Float" in str(c[0][2])]
         assert len(rtk_calls) > 0, "RTK Float text should be written"
         assert rtk_calls[0][0][3] == yellow_attr, "RTK Float should use yellow|bold"
