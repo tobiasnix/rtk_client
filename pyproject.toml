@@ -13,5 +13,16 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
 
+# pytest (>=9) ships inline types (py.typed) and its own source uses match/case
+# (3.10+ syntax). With python_version = "3.9" above, mypy's default
+# follow_imports="normal" parses _pytest's real source when our tests import
+# it and fails with a syntax error on that match statement -- a false
+# positive about pytest's internals, not about our code. Scoped to the one
+# third-party package that triggers it; does not relax checking of our own
+# modules or tests.
+[[tool.mypy.overrides]]
+module = "_pytest.*"
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

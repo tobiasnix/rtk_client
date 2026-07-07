@@ -1,4 +1,16 @@
 pytest>=7.0
 ruff>=0.4.0
-mypy>=1.0
+# mypy>=2.0 dropped support for python_version = "3.9" outright ("Python 3.9
+# is not supported (must be 3.10 or higher)") -- incompatible with this
+# project's declared py39 target (see pyproject.toml [tool.mypy] and
+# AGENTS.md). Pinned below 2.0 so `python_version = "3.9"` keeps being
+# honored instead of silently ignored/erroring.
+mypy>=1.13,<2.0
+# Real stub package for PyYAML (rtk_config.py imports yaml). Newer mypy
+# splits "no stub, but package installed" (import-untyped) from "package not
+# found at all" (import-not-found); ignore_missing_imports above only
+# suppresses the latter, so without this mypy flagged rtk_config.py's yaml
+# import. Installing the real stubs is the actual fix mypy itself suggests,
+# not a suppression.
+types-PyYAML>=6.0
 pre-commit>=3.0

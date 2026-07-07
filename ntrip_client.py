@@ -262,7 +262,7 @@ class NtripClient:
 
                 # Process any data that came with the response
                 if body_part:
-                    self._handle_rtcm_data(body_part)
+                    self._handle_rtcm_data(bytes(body_part))
 
                 return True
             else:
