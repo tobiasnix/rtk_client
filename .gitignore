@@ -3,3 +3,11 @@ __pycache__/
 *.pyc
 .rtk_state.json
 .env
+
+# keel-python adoption (Makefile/keel.toml): local venv + build artifacts.
+# Bestandsdatei-Aenderung, dokumentiert: bisher fehlten diese Eintraege, weil
+# es vorher keinen Python-Build-/Venv-Verb-Workflow im Repo gab.
+.venv/
+dist/
+build/
+*.egg-info/

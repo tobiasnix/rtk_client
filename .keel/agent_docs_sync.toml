@@ -1,0 +1,31 @@
+# .keel/agent_docs_sync.toml — guard config for rtk_client.
+#
+# Paths are relative to this file's directory (i.e. relative to .keel/).
+# English markers, matching this project's documentation language (AGENTS.md
+# and CLAUDE.md are English here, unlike the German keel-self example this
+# config is modeled on).
+#
+# Invocation (see Makefile's verify-fast / agent-docs-sync-check target):
+#   python3 /work/keelyard-keel/guards/verify_agent_docs_sync.py --config .keel/agent_docs_sync.toml
+
+agents_md = "../AGENTS.md"
+claude_md = "../CLAUDE.md"
+
+# Mandatory sections/markers that MUST exist in AGENTS.md.
+required_in_agents = [
+  "## Verbs",
+  "## Commit Rules",
+  "## Prohibitions",
+  "Code is the only source of truth",
+]
+
+# Neutral SSOT headings that must appear ONLY in AGENTS.md. If these show up
+# in CLAUDE.md again, the rule got copy-pasted there -> copy-drift.
+forbidden_in_claude = [
+  "## Verbs",
+  "## Commit Rules",
+  "## Prohibitions",
+]
+
+# CLAUDE.md MUST reference AGENTS.md (default, set explicitly here).
+required_claude_reference = "AGENTS.md"

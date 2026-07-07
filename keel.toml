@@ -1,0 +1,13 @@
+# keel.toml — project manifest (keel contract, see keelyard/keel: contract/keel.toml.schema.md).
+#
+# rtk_client is a library/CLI tool, not something delivered as a customer
+# export snapshot — there is deliberately NO [delivery] section here. Per
+# contract/verbs.toml, the "export" verb is only MUSS_WENN_AUSGELIEFERT
+# (required only if [delivery] exists); without it, "export" is correctly
+# skipped by contract/conformance.py as informational, not a contract
+# violation. This is the intended graceful-degradation path for a plain
+# library consumer of the keel-python pack.
+
+[keel]
+contract_version = "1"
+stack_pack       = "keel-python@0.1"
