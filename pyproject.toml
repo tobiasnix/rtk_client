@@ -1,3 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rtk-client"
+description = "Terminal-based RTK positioning with NTRIP corrections"
+dynamic = ["version", "dependencies"]
+requires-python = ">=3.9"
+readme = "README.md"
+license = "AGPL-3.0-only"
+
+# Flat layout (no src/ package dir, see AGENTS.md): every root-level module is
+# its own top-level import, listed explicitly below. `data` is the one real
+# package (data/demo.nmea, the --demo fixture used by demo_device.py).
+[tool.setuptools]
+py-modules = [
+    "__version__",
+    "demo_device",
+    "demo_ntrip",
+    "gnss_device",
+    "main",
+    "module_profiles",
+    "nmea_parser",
+    "ntrip_client",
+    "ntrip_connection_state",
+    "position_logger",
+    "rtcm_parser",
+    "rtk_client",
+    "rtk_config",
+    "rtk_constants",
+    "rtk_controller",
+    "rtk_state",
+    "state_persistence",
+    "status_display",
+]
+packages = ["data"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+data = ["demo.nmea"]
+
+[tool.setuptools.dynamic]
+version = {attr = "__version__.__version__"}
+dependencies = {file = ["requirements.txt"]}
+
 [tool.ruff]
 line-length = 120
 target-version = "py39"
